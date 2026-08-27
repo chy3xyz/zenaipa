@@ -91,9 +91,10 @@ src/modules/order/
 const graph = zent.codegen.graph.buildGraph(&.{ tenant_model.Tenant, user_model.User, /* ... */ order_model.Order });
 ```
 
-> 注意:zent `buildGraph` 单次调用有 comptime 分支配额,表多时拆多个
-> graph(本项目拆了 3 个)并在 `pub const infos = graph.types ++ ...` 汇总,
-> `Client` 由全量 infos 生成。跨表边(WithEdge)需在同 graph 内。
+> 注意:`zent` 自 v0.29.4 起 comptime 配额已实测可容纳单图 400 表
+> (见 zent `docs/UPGRADING.md` §7a),本项目全部表在
+> `src/schema.zig` 的**一个** `buildGraph` 里构建,`Client` 由全量
+> infos 生成。不要再拆多图——拆图会阻断跨表边(WithEdge)。
 
 ### 2.3 服务装配(main.zig 手工 DI)
 
@@ -211,6 +212,27 @@ try tx.commit();
   count + limit/offset。
 - 大表深分页:OFFSET 分页是 O(n),增长表切 `crud.cursorPage`(keyset)。
 
+### 3.6 zent ≥ v0.30 新增能力(按需采用)
+
+当前基线 zent v0.32.1 + zigmodu v0.15.32,以下能力可直接用:
+
+- 业务键 upsert:`CreateBuilder.SaveOrUpdateOn(&.{"code"})` /
+  `SaveIgnore()`(v0.30)——替代「exists 判断后 insert」,天然幂等;
+- NULL 安全取值:`Row.tryGetInt/tryGetText/...`(v0.30,NULL 返回
+  `error.NullColumn`,替代手写 null 分支);
+- 精确金额列:`field.Decimal(name)`(v0.31,扫成 owned
+  `[]const u8`,不会静默截断成 f64);
+- eager 加载带过滤:`WithEdgeOptions(path, .{ .join = .inner, ... })`
+  (v0.31,Limit 在边过滤之后应用,不会偏斜);
+- 运行时查询改写:zent Interceptor(v0.32,`UseInterceptor` +
+  `view.whereEq("tenant_id", …)`)——适合未来把租户注入从手写谓词
+  收敛到 client 级;本项目当前仍用手写谓词约定(§4),切换需单独评估;
+- zigmodu 侧:`bindJsonLoose`(0.15.26,camelCase/null 宽松绑定)——
+  **本项目 16 个写接口已全部替换**(缺失字段回退声明默认值,非空字段
+  空串由 service 层校验兜住);另有 `insertOmitNulls`/`updatePartial`
+  (0.15.25)、INSERT 回填自增 id(0.15.27)、Redis 分布式限流(0.15.28)、
+  header 数量/总量上限防 DoS(0.15.32,`initWithConfig` 默认开启)可用。
+
 ---
 
 ## 4. 多租户与安全规范
@@ -250,9 +272,11 @@ try tx.commit();
    `findByIds` 再内存分组。
 4. **分页**:`audit_log`/`ai_run`/`notification` 这类增长表,深分页换
    `cursorPage`。
-5. **编译期**:zig 本地 path 依赖缓存以 fingerprint 为键,升级 zigmodu/
-   zent 后如遇「改了没生效」,用 `zig build --summary all` 确认是否
-   重编译,必要时 `ZIG_GLOBAL_CACHE_DIR=/tmp/x` 强制全量。
+5. **编译期**:路径依赖(`.path`)的本地缓存以 fingerprint 为键,临时切回
+   sibling 检出联调上游改动后,如遇「改了没生效」,用
+   `zig build --summary all` 确认是否重编译,必要时换
+   `ZIG_GLOBAL_CACHE_DIR=/tmp/x` 强制全量。git hash 依赖不存在此问题
+   (内容哈希即缓存键)。
 
 ---
 
@@ -303,9 +327,14 @@ try tx.commit();
 
 - 三个构建产物:服务 `zig build run`、管理 CLI `zig build admin`
   (`create-admin --email ...`)、测试 `zig build test`。
-- CI(.github/workflows/ci.yml)在 push main 时按
-  `zig_ws/{zigmodu,zent}` 兄弟布局重建依赖后跑 fmt + build + test,
-  以及前端 typecheck + build;发版前保证 CI 绿。
+- **依赖以 git tag + 内容哈希锁定**(`build.zig.zon` 的
+  `.url = "git+https://...?ref=vX.Y.Z#<commit>"` + `.hash`)——`zig build`
+  直接从 GitHub 拉取,不需要本地 sibling 检出。升级依赖:`zig fetch --save=<name>
+  'git+https://github.com/chy3xyz/<repo>?ref=vX.Y.Z#<commit>'`(或临时去掉
+  `.hash` 跑一次 `zig build`,按提示的 Suggested hash 回填),跑全量测试后同步
+  文档版本口径。本地联调上游改动时再临时换回 `.path = "../../zig_ws/<repo>"`。
+- CI(.github/workflows/ci.yml)在 push main / PR 时跑后端 fmt + build +
+  test(依赖由 Zig 按 hash 拉取),以及前端 typecheck + build;发版前保证 CI 绿。
 - 发版流程:更新 `CHANGELOG.md` → bump `build.zig.zon` version →
   `chore(release): vX.Y.Z` 提交 → `git tag vX.Y.Z` → push → 
   `gh release create`(notes 取 CHANGELOG)。

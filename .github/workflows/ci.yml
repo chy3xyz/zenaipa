@@ -11,22 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # zenaipa 的 build.zig.zon 以相对路径依赖 zig_ws/{zigmodu,zent};
-      # 在 CI 中复现该布局后构建。
-      - name: Recreate sibling dependency layout
-        run: |
-          mkdir -p /tmp/ci/w4_proj/zig_ws /tmp/ci/w4_proj/dev_machine/_adm_frame_
-          git clone --depth 1 https://github.com/chy3xyz/zigmodu.git /tmp/ci/w4_proj/zig_ws/zigmodu
-          git clone --depth 1 https://github.com/chy3xyz/zent.git /tmp/ci/w4_proj/zig_ws/zent
-          cp -r "$GITHUB_WORKSPACE" /tmp/ci/w4_proj/dev_machine/_adm_frame_/zmadmin
+      # build.zig.zon pins zent/zigmodu by git tag + content hash; Zig fetches
+      # them directly, no sibling checkout needed.
       - uses: mlugg/setup-zig@v1
         with:
           version: 0.17.0-dev.1567+f0354179a
       - name: Zig format check
-        working-directory: /tmp/ci/w4_proj/dev_machine/_adm_frame_/zmadmin
         run: zig fmt --check src/ build.zig
       - name: Zig build + tests
-        working-directory: /tmp/ci/w4_proj/dev_machine/_adm_frame_/zmadmin
         run: zig build test --summary all
 
   frontend:

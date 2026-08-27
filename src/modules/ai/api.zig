@@ -221,7 +221,7 @@ pub fn AiApi(comptime AiSvcT: type, comptime UserService: type) type {
         fn createProvider(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
             _ = (try requireAdmin(ctx, self)) orelse return;
-            const req = ctx.bindJson(CreateProviderReq) catch {
+            const req = ctx.bindJsonLoose(CreateProviderReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
@@ -270,7 +270,7 @@ pub fn AiApi(comptime AiSvcT: type, comptime UserService: type) type {
             };
             defer cur.free(ctx.allocator);
 
-            const req = ctx.bindJson(UpdateProviderReq) catch {
+            const req = ctx.bindJsonLoose(UpdateProviderReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
@@ -360,7 +360,7 @@ pub fn AiApi(comptime AiSvcT: type, comptime UserService: type) type {
                 try ctx.sendErrorResponse(401, 401, "未登录或登录已过期");
                 return;
             };
-            const req = ctx.bindJson(CreateSessionReq) catch {
+            const req = ctx.bindJsonLoose(CreateSessionReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
@@ -412,7 +412,7 @@ pub fn AiApi(comptime AiSvcT: type, comptime UserService: type) type {
             };
             defer session.free(ctx.allocator);
 
-            const req = ctx.bindJson(ChatReq) catch {
+            const req = ctx.bindJsonLoose(ChatReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };

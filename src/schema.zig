@@ -15,9 +15,9 @@ const audit_model = @import("modules/audit/model.zig");
 const mail_template_model = @import("modules/mail_template/model.zig");
 const ai_model = @import("modules/ai/model.zig");
 
-// zent's `buildGraph` comptime edge-resolution has a per-call branch quota;
-// keeping the graph small avoids it, so the app schema and the standalone
-// mail-template table are built as two graphs and their types merged.
+// One graph for every table (zent v0.29.4+ raises the comptime branch quota
+// to 1M — measured to fit 400 tables per buildGraph, see zent docs/UPGRADING.md
+// §7a). Splitting graphs is stale guidance and blocks cross-graph WithEdge.
 const graph = zent.codegen.graph.buildGraph(&.{
     tenant_model.Tenant,
     user_model.User,
@@ -27,9 +27,7 @@ const graph = zent.codegen.graph.buildGraph(&.{
     file_model.File,
     notify_model.Notification,
     audit_model.AuditLog,
-});
-const template_graph = zent.codegen.graph.buildGraph(&.{mail_template_model.EmailTemplate});
-const ai_graph = zent.codegen.graph.buildGraph(&.{
+    mail_template_model.EmailTemplate,
     ai_model.AiProvider,
     ai_model.AiSession,
     ai_model.AiMessage,
@@ -37,5 +35,5 @@ const ai_graph = zent.codegen.graph.buildGraph(&.{
     ai_model.AiRun,
 });
 
-pub const infos = graph.types ++ template_graph.types ++ ai_graph.types;
+pub const infos = graph.types;
 pub const Client = zent.codegen.client.Client(infos);

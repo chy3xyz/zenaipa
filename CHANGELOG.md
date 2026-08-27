@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Dependencies
+
+- **zent v0.29.7 → v0.32.1 + zigmodu v0.15.22 → v0.15.32**, now pinned by
+  git tag + content hash (`git+https` URL, `.hash` per upstream package-hash
+  scheme) instead of local sibling paths — `zig build` fetches directly from
+  GitHub; CI no longer clones/recreates the `zig_ws` sibling layout.
+  Verified with a cold-cache build (fresh fetch + full test suite).
+
+### Changed
+
+- **Adopted zigmodu 0.15.26 `bindJsonLoose` across all 16 JSON write
+  endpoints** (auth/user/tenant/ai/mail_template): camelCase↔snake_case
+  fields and `"field": null` no longer fail binding or wipe declared
+  defaults; required-field empty strings are caught by existing service
+  validations (`InvalidName`, email/password checks) — all 33 backend tests
+  pass unchanged.
+- Schema graphs merged into a single `buildGraph` in `src/schema.zig`
+  (previously split 3-way against old comptime-quota guidance; zent
+  UPGRADING §7a now measures 400 tables per graph) — cross-graph edges are
+  possible again.
+- Docs synced to the new baselines: README badges/roadmap versions,
+  development-guide dependency-pinning workflow (§8), single-graph note
+  (§2.2) and new §3.6 listing available v0.30–v0.32 capabilities
+  (`SaveOrUpdateOn`, `Row.tryGet*`, `field.Decimal`, `WithEdgeOptions`,
+  Interceptor, zigmodu partial writes / header DoS limits).
+
 ## [0.2.2] - 2026-08-11
 
 ### Fixed

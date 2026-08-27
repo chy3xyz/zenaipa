@@ -172,7 +172,7 @@ pub fn UserApi(comptime Service: type) type {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
             const admin_id = (try requireAdmin(ctx, self)) orelse return;
 
-            const req = ctx.bindJson(CreateUserReq) catch {
+            const req = ctx.bindJsonLoose(CreateUserReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
@@ -210,7 +210,7 @@ pub fn UserApi(comptime Service: type) type {
                 try ctx.sendErrorResponse(400, 400, "无效的用户 ID");
                 return;
             };
-            const req = ctx.bindJson(UpdateUserReq) catch {
+            const req = ctx.bindJsonLoose(UpdateUserReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };

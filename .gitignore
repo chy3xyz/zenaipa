@@ -3,6 +3,7 @@
 .zig-cache-global/
 .zig-global-cache/
 zig-out/
+zig-pkg/
 
 # Frontend
 web/node_modules/

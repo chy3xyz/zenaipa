@@ -135,7 +135,7 @@ pub fn AuthApi(comptime Service: type) type {
 
         fn register(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
-            const req = ctx.bindJson(RegisterReq) catch {
+            const req = ctx.bindJsonLoose(RegisterReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
@@ -187,7 +187,7 @@ pub fn AuthApi(comptime Service: type) type {
 
         fn login(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
-            const req = ctx.bindJson(LoginReq) catch {
+            const req = ctx.bindJsonLoose(LoginReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
@@ -252,7 +252,7 @@ pub fn AuthApi(comptime Service: type) type {
 
         fn forgotPassword(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
-            const req = ctx.bindJson(ForgotPasswordReq) catch {
+            const req = ctx.bindJsonLoose(ForgotPasswordReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
@@ -278,7 +278,7 @@ pub fn AuthApi(comptime Service: type) type {
 
         fn resetPassword(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
-            const req = ctx.bindJson(ResetPasswordReq) catch {
+            const req = ctx.bindJsonLoose(ResetPasswordReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
@@ -315,7 +315,7 @@ pub fn AuthApi(comptime Service: type) type {
 
         fn verifyEmail(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
-            const req = ctx.bindJson(VerifyEmailReq) catch {
+            const req = ctx.bindJsonLoose(VerifyEmailReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
@@ -343,7 +343,7 @@ pub fn AuthApi(comptime Service: type) type {
                 try ctx.sendErrorResponse(401, 401, "未登录或登录已过期");
                 return;
             };
-            const req = ctx.bindJson(UpdateProfileReq) catch {
+            const req = ctx.bindJsonLoose(UpdateProfileReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
@@ -406,7 +406,7 @@ pub fn AuthApi(comptime Service: type) type {
                 try ctx.sendErrorResponse(401, 401, "未登录或登录已过期");
                 return;
             };
-            const req = ctx.bindJson(ChangePasswordReq) catch {
+            const req = ctx.bindJsonLoose(ChangePasswordReq) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
