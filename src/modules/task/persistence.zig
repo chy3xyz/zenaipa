@@ -226,23 +226,31 @@ pub const TaskStore = struct {
             found.deinit();
         }
 
-        var count: usize = 0;
+        // 未超预算的重排统一收进 id 列表,一条 UPDATE ... WHERE id IN (...)
+        // 批量完成(开发指南 §5.2);超预算的仍逐条走 markFailedOrRetry。
+        var retry_ids: std.ArrayListUnmanaged(i64) = .empty;
+        defer retry_ids.deinit(self.allocator);
         for (found.items) |e| {
             if (e.attempts >= e.max_attempts) {
                 try self.markFailedOrRetry(e.id, e.attempts, e.max_attempts, "stale (worker died)", now, 0);
             } else {
-                var upd = self.client.task.Update();
-                defer upd.deinit();
-                _ = try upd.set("status", .{ .string = "pending" });
-                _ = try upd.setFieldValue("available_at", now);
-                _ = try upd.setFieldValue("started_at", 0);
-                _ = try upd.setFieldValue("updated_at", now);
-                _ = try upd.Where(.{preds.idEQ(.{ .int = e.id })});
-                _ = try upd.Save();
+                try retry_ids.append(self.allocator, e.id);
             }
-            count += 1;
         }
-        return count;
+        if (retry_ids.items.len > 0) {
+            const vals = try self.allocator.alloc(zent.sql.Value, retry_ids.items.len);
+            defer self.allocator.free(vals);
+            for (retry_ids.items, 0..) |id, i| vals[i] = .{ .int = id };
+            var upd = self.client.task.Update();
+            defer upd.deinit();
+            _ = try upd.set("status", .{ .string = "pending" });
+            _ = try upd.setFieldValue("available_at", now);
+            _ = try upd.setFieldValue("started_at", 0);
+            _ = try upd.setFieldValue("updated_at", now);
+            _ = try upd.Where(.{zent.sql.In("id", vals)});
+            _ = try upd.Save();
+        }
+        return found.items.len;
     }
 
     pub fn retryTask(self: *TaskStore, id: i64, now: i64) !bool {

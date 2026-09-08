@@ -7,7 +7,7 @@
 让你在咖啡凉掉之前,把内部管理台搭好上线。
 
 [![Zig](https://img.shields.io/badge/Zig-0.17-orange?logo=zig&logoColor=white)](https://ziglang.org)
-[![zigmodu](https://img.shields.io/badge/zigmodu-v0.15.22-blue)](https://github.com/chy3xyz/zigmodu)
+[![zigmodu](https://img.shields.io/badge/zigmodu-v0.15.36-blue)](https://github.com/chy3xyz/zigmodu)
 [![zent](https://img.shields.io/badge/zent-ORM-6b46c1)](https://github.com/chy3xyz/zent)
 [![SolidJS](https://img.shields.io/badge/前端-SolidJS-2c4f7c?logo=solid&logoColor=white)](https://www.solidjs.com)
 [![Tests](https://img.shields.io/badge/测试-31%20后端%20%2B%205%20前端-green)]()
@@ -67,7 +67,7 @@
 ### 💎 工程品质
 - Schema-as-code 迁移(启动自动);SQLite ↔ PostgreSQL 一个环境变量切换
 - 全链路类型安全查询(零 SQL 字符串拼接)
-- **31 个后端测试**(store/service、Testkit HTTP、JWT/多租户、审计、AI 加密/审批/配额、管理端门禁 401/403/200、会话吊销)+ **5 个前端测试**(vitest)
+- **33 个后端测试**(store/service、Testkit HTTP、JWT/多租户、审计、AI 加密/审批/配额、管理端门禁 401/403/200、会话吊销)+ **5 个前端测试**(vitest)
 - `zig fmt` 全绿、零 TODO、优雅关闭、备份策略文档化
 
 ---
@@ -76,7 +76,7 @@
 
 | 层 | 技术 |
 | --- | --- |
-| 后端 | [Zig](https://ziglang.org) 0.17 · [zigmodu](https://github.com/chy3xyz/zigmodu) v0.15.22+(HTTP、安全、AI、resilience、Application 生命周期) · [zent](https://github.com/chy3xyz/zent) v0.29.4+(ORM、schema、迁移) |
+| 后端 | [Zig](https://ziglang.org) 0.17 · [zigmodu](https://github.com/chy3xyz/zigmodu) v0.15.36+(HTTP、安全、AI、resilience、Application 生命周期) · [zent](https://github.com/chy3xyz/zent) v0.34.0+(ORM、schema、迁移) |
 | 前端 | [SolidJS](https://www.solidjs.com) · TypeScript · [Rsbuild](https://rsbuild.dev) · [Tailwind CSS](https://tailwindcss.com) 4 · [DaisyUI](https://daisyui.com) · vitest |
 | 数据库 | SQLite(默认)· PostgreSQL(一个环境变量切换) |
 
@@ -182,7 +182,7 @@ cd web && npm install && npm run dev
 ## 🧪 测试
 
 ```bash
-zig build test                     # 31 个后端测试(内存 SQLite + Testkit HTTP)
+zig build test                     # 33 个后端测试(内存 SQLite + Testkit HTTP)
 cd web && npm run typecheck && npm test && npm run build   # vitest + 构建
 ```
 
@@ -205,7 +205,7 @@ cd web && npm run typecheck && npm test && npm run build   # vitest + 构建
 | ✅ 已完成 | **流式聊天** —— Agent `chatStream` + `on_delta`(zigmodu v0.15.16);SSE reasoning/delta/done 打字机效果,JSON 降级 |
 | ✅ 已完成 | **运行用量审计** —— zigmodu v0.15.17 `Metrics.toStats()`;每次 AI run 持久化 tokens/steps/工具调用用量,管理端 runs 表格展示 |
 | ✅ 已完成 | **流式工具 JSON 修复** —— zigmodu v0.15.18(`b28444a`);SkillRegistry tools_json 输出合法 JSON(去掉多余 `}`),修复流式 chat 中 DeepSeek/OpenAI 以 400 拒绝工具 schema(`ProviderError`)的问题 |
-| ✅ 已完成 | **依赖升级到最新** —— zigmodu v0.15.22 + zent v0.29.4;zent `Sum` 改为 f64 已适配(`@intFromFloat`),`migrate.zig` comptime 配额修复(`10ab9ce`) |
+| ✅ 已完成 | **依赖升级到最新** —— zigmodu v0.15.36 + zent v0.34.0,以 `git+https` URL + 内容哈希锁定(无需本地 sibling 检出);全部 16 个写接口采用 `bindJsonLoose`;schema 合并为单一 `buildGraph`(见 zent UPGRADING §7a) |
 
 ---
 

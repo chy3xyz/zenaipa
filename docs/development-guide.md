@@ -214,7 +214,7 @@ try tx.commit();
 
 ### 3.6 zent ≥ v0.30 新增能力(按需采用)
 
-当前基线 zent v0.32.1 + zigmodu v0.15.32,以下能力可直接用:
+当前基线 zent v0.34.0 + zigmodu v0.15.36,以下能力可直接用:
 
 - 业务键 upsert:`CreateBuilder.SaveOrUpdateOn(&.{"code"})` /
   `SaveIgnore()`(v0.30)——替代「exists 判断后 insert」,天然幂等;
@@ -231,7 +231,24 @@ try tx.commit();
   **本项目 16 个写接口已全部替换**(缺失字段回退声明默认值,非空字段
   空串由 service 层校验兜住);另有 `insertOmitNulls`/`updatePartial`
   (0.15.25)、INSERT 回填自增 id(0.15.27)、Redis 分布式限流(0.15.28)、
-  header 数量/总量上限防 DoS(0.15.32,`initWithConfig` 默认开启)可用。
+  header 数量/总量上限防 DoS(0.15.32,`initWithConfig` 默认开启)可用;
+  另有自定义未匹配路由 404 处理器(0.15.36)按需采用。
+
+- zent v0.33–v0.34(v0.32.2/v0.32.3 为 pool UAF 与 sqlite 并发安全修复,
+  升级即受益):
+  - 原生 SQL 参数化片段 `sql.RawArgs`(v0.34,方言占位符重绑定,参数个数
+    不匹配返回 `error.RawArgCountMismatch`);
+  - 聚合查询:`SumOrZero`/`AggregateOne`/`AggregateText`(精确金额文本)/
+    `AggregateBy`(分组,自动带 Where+软删+Having)(v0.34);
+  - 按列 upsert 表达式:`SaveOrUpdateOnWith` + `UpsertSetExpr`
+    (`{t:col}`/`{x:col}` 模板,SQLite 走 ON CONFLICT DO UPDATE)(v0.34);
+  - 行级锁变体:`ForUpdateWith(LockOpts{ .of/.skip_locked/.nowait })`,
+    按方言降级(v0.34);
+  - 原生查询 DTO 扫描:`sql_scan.queryAll/queryOne/freeDto`,按列名映射
+    DTO 结构体字段(v0.34);
+  - Create/BulkInsert 拦截器(v0.33,`whereEq` 在 create 缺列时填充,
+    显式值保留)——租户注入收敛到 client 级的可行性进一步增强,
+    本项目仍用手写谓词约定(§4),切换需单独评估。
 
 ---
 
@@ -266,7 +283,8 @@ try tx.commit();
 1. **索引**:凡有按某列过滤/排序的热路径,在 schema 加
    `index.Fields(&.{...})`(复合索引注意列顺序,等值在前、范围在后)。
 2. **批量操作**:循环内逐条 `Update/Exec` 改 `WHERE id IN (...)` 一次
-   (参考 task `requeueStale` 的待办);大批量插入用 `BulkInsert` /
+   (task `requeueStale` 已用 `zent.sql.In("id", vals)` 落地此模式);
+   大批量插入用 `BulkInsert` /
    `crud.batchCreate`。
 3. **N+1**:列表 + 每行查关联,改 zent `WithEdge`(同 graph 内)或一次
    `findByIds` 再内存分组。

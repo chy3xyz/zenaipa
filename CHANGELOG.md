@@ -9,13 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 
+- **zent v0.32.1 → v0.34.0 + zigmodu v0.15.32 → v0.15.36** (git tag +
+  content-hash pins). Upgrades are additive/fix-only, zero breaking; 33/33
+  backend tests pass unchanged. Stability wins adopted automatically:
+  zent v0.32.2 connection-pool use-after-free fix (segfault after idle
+  eviction), v0.32.3 SQLite cross-thread connection serialization (this
+  project's fallback/test backend), and zigmodu v0.15.33 accept-loop
+  keep-alive hang fix. New optional capabilities documented in
+  development-guide §3.6 (zent raw predicates / aggregates /
+  `SaveOrUpdateOnWith` upsert exprs / `ForUpdateWith` lock variants /
+  `sql_scan` DTO scanning; zent v0.33 Create/BulkInsert interceptors;
+  zigmodu v0.15.36 custom 404 handler — not adopted: this project's
+  `{code,msg,data}` envelope already matches the framework default).
+
+### Changed
+
+- **Adopted zent v0.34 capabilities where the guide already called for them:**
+  - `mail_template` upsert replaced the "exists → insert/update" two-step
+    with a single-statement business-key upsert (`SaveOrUpdateOnWith` on
+    `code`, explicit SET exprs preserve row id + `created_at` and route
+    SQLite through ON CONFLICT DO UPDATE instead of INSERT OR REPLACE) —
+    idempotent under races, per development-guide §3.6;
+  - `task.requeueStale` now requeues stale claims with one
+    `UPDATE ... WHERE id IN (...)` via `zent.sql.In` instead of a per-row
+    loop (§5.2 批量操作待办); over-budget tasks still go through
+    `markFailedOrRetry` individually. New round-trip test covers both
+    branches (34 backend tests total).
+- Not adopted (evaluated): zent v0.33 Create/BulkInsert interceptors for
+  tenant injection (guide §4 keeps hand-written predicates; switching needs
+  a separate assessment) and zigmodu v0.15.36 custom 404 handler (this
+  project's `{code,msg,data}` envelope already matches the framework
+  default).
+
+### Dependencies (v0.32.1 + v0.15.32 round)
+
 - **zent v0.29.7 → v0.32.1 + zigmodu v0.15.22 → v0.15.32**, now pinned by
   git tag + content hash (`git+https` URL, `.hash` per upstream package-hash
   scheme) instead of local sibling paths — `zig build` fetches directly from
   GitHub; CI no longer clones/recreates the `zig_ws` sibling layout.
   Verified with a cold-cache build (fresh fetch + full test suite).
 
-### Changed
+### Changed (v0.32.1 + v0.15.32 round)
 
 - **Adopted zigmodu 0.15.26 `bindJsonLoose` across all 16 JSON write
   endpoints** (auth/user/tenant/ai/mail_template): camelCase↔snake_case

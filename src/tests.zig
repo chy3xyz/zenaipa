@@ -257,6 +257,35 @@ test "task queue: retry backoff and failure budget" {
     try std.testing.expectEqualStrings("failed", failed.status);
 }
 
+test "task queue: requeueStale batch-requeues live claims, fails over-budget" {
+    const allocator = std.testing.allocator;
+    var env = try openMemory(allocator);
+    defer env.deinit();
+    var task_store = task.persistence.TaskStore.init(allocator, env.client);
+
+    // 三条超时的 claimed 任务(started_at=0 早于 now-stale_after):
+    // 两条未超预算(IN 批量重排 pending),一条超预算(failed)。
+    const a = try task_store.createTask("mail.send", "{}", "claimed", 1, 0, 2, "", 0, 100);
+    const d = try task_store.createTask("mail.send", "{}", "claimed", 1, 1, 2, "", 0, 100);
+    const b = try task_store.createTask("mail.send", "{}", "claimed", 1, 2, 2, "", 0, 100);
+
+    const count = try task_store.requeueStale(1000, 100);
+    try std.testing.expectEqual(@as(usize, 3), count);
+
+    const ra = (try task_store.getTaskById(a)).?;
+    defer ra.free(allocator);
+    try std.testing.expectEqualStrings("pending", ra.status);
+    try std.testing.expectEqual(@as(i64, 1000), ra.available_at);
+    try std.testing.expectEqual(@as(i64, 0), ra.started_at);
+    const rd = (try task_store.getTaskById(d)).?;
+    defer rd.free(allocator);
+    try std.testing.expectEqualStrings("pending", rd.status);
+    const rb = (try task_store.getTaskById(b)).?;
+    defer rb.free(allocator);
+    try std.testing.expectEqualStrings("failed", rb.status);
+    try std.testing.expectEqual(@as(i64, 1000), rb.finished_at);
+}
+
 test "notification store: create, unread count, mark read" {
     const allocator = std.testing.allocator;
     var env = try openMemory(allocator);
