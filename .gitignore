@@ -29,8 +29,9 @@ zenaipa.db
 # Uploaded files (runtime data)
 uploads/
 
-# Stray root package-lock (real lockfile lives in web/)
-package-lock.json
+# Stray root package-lock (real lockfile lives in web/); leading slash
+# anchors it to the repo root so web/package-lock.json stays tracked
+/package-lock.json
 
 # Local agent sandbox config (machine-specific writable roots)
 reasonix.toml
