@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 
+- **zent v0.34.0 → v0.67.0 + zigmodu v0.15.36 → v0.20.1** (git tag +
+  content-hash pins; 42 + 11 upstream releases). Source-compatible for this
+  codebase — after clearing a stale `.zig-cache` module graph (see below),
+  the full suite passes against the real new versions. Behavior changes
+  that ride along: `migrateSchema` now takes an advisory lock by default
+  (10s, multi-instance migrations serialise), `crud.update`/`increment`
+  report rows *matched* on every dialect (idempotent updates no longer
+  read as "missing" on MySQL), `cursorPage` rejects non-integer cursor
+  columns, and `ctx.route_template` metrics labels are normalised with a
+  leading slash. Not applicable here: MySQL VARCHAR(255) string columns
+  (PG/SQLite only), RFC 7807 error bodies (opt-in, not enabled), and the
+  v0.16–v0.20 runtime additions (worker supervision / SagaOrchestrator /
+  ClusterView — overlap with the built-in task queue; evaluated, not
+  adopted).
+- **Tooling pitfall found during the upgrade**: with the vendored
+  `zig-pkg/` layout, `zig fetch --save` updates `build.zig.zon` but a
+  stale `.zig-cache` module graph keeps compiling the *old* dependency —
+  silently green. Verified the fix (clean `.zig-cache`, check the
+  `-M<dep>=zig-pkg/<version>-…` path) and documented it in
+  development-guide §5.5 + §7.
+
+### Security
+
+- **`file` upload now sniffs bytes via zigmodu `UploadGuard` (v0.15.46)**
+  instead of checking only the extension: active content (SVG/HTML —
+  stored-XSS vectors) is rejected even when renamed to `.txt`, alongside
+  the existing extension allowlist and size cap. `require_extension_match`
+  stays off because this is a general file store (docx/xlsx sniff as zip
+  containers, tar/mov have no magic number). Also fixes
+  `FileTypeNotAllowed` being misreported as HTTP 500 — now 400 with a
+  message. New service-level test covers rename-bypass rejection, svg,
+  php-extension, size cap, and happy-path png/md round-trip (35 backend
+  tests total).
+
+### Dependencies (v0.34.0 + v0.15.36 round)
+
 - **zent v0.32.1 → v0.34.0 + zigmodu v0.15.32 → v0.15.36** (git tag +
   content-hash pins). Upgrades are additive/fix-only, zero breaking; 33/33
   backend tests pass unchanged. Stability wins adopted automatically:
@@ -22,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zigmodu v0.15.36 custom 404 handler — not adopted: this project's
   `{code,msg,data}` envelope already matches the framework default).
 
-### Changed
+### Changed (v0.34.0 + v0.15.36 round)
 
 - **Adopted zent v0.34 `SumOrZero` in `ai.quotaForUser`** — the empty-window
   path (user with no runs in the quota window) previously propagated

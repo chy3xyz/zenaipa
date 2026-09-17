@@ -87,6 +87,11 @@ pub fn FileApi(comptime Service: type, comptime UserService: type) type {
                     try ctx.sendErrorResponse(413, 413, "文件超过大小限制");
                     return;
                 },
+                error.FileTypeNotAllowed => {
+                    // UploadGuard:主动内容(SVG/HTML,含改名)或扩展名不在白名单。
+                    try ctx.sendErrorResponse(400, 400, "文件类型不允许");
+                    return;
+                },
                 else => {
                     std.log.err("internal error: {s}", .{@errorName(err)});
                     try ctx.sendErrorResponse(500, 500, "服务器内部错误");

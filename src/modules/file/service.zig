@@ -1,6 +1,7 @@
 //! File service — local-disk storage with DB metadata.
 
 const std = @import("std");
+const zigmodu = @import("zigmodu");
 const persist = @import("persistence.zig");
 
 pub const FileRow = persist.FileRow;
@@ -37,10 +38,24 @@ pub const FileService = struct {
 
     /// Persist raw bytes to disk and record metadata. `filename` is the
     /// user-facing name; the on-disk name is a generated storage key.
+    /// 内容校验走 zigmodu `UploadGuard`(v0.15.46):按字节嗅探,主动内容
+    /// (SVG/HTML)改名成 .txt 也拒收——仅靠扩展名白名单挡不住改名绕过。
     pub fn save(self: *FileService, uploader_id: i64, tenant_id: i64, filename: []const u8, mime: []const u8, data: []const u8) !FileRow {
-        if (data.len > self.max_bytes) return error.FileTooLarge;
-        const ext = extensionOf(filename);
-        if (!extensionAllowed(ext)) return error.FileTypeNotAllowed;
+        _ = zigmodu.http.UploadGuard.check(filename, data, .{
+            .extensions = &allowed_extensions,
+            .max_bytes = self.max_bytes,
+            // 通用文件库:docx/xlsx/pptx 嗅探为 zip 容器、tar/mov 无魔数,
+            // 扩展名↔内容强一致会误杀合法文件;核心防线是拒主动内容。
+            .require_extension_match = false,
+        }) catch |err| switch (err) {
+            error.FileTooLarge => return error.FileTooLarge,
+            // 主动内容/扩展名不在白名单统一为业务错误,由 api 层转 4xx。
+            error.ActiveContentNotAllowed,
+            error.ExtensionNotAllowed,
+            error.ContentNotAllowed,
+            error.ExtensionContentMismatch,
+            => return error.FileTypeNotAllowed,
+        };
         try self.ensureDir();
 
         const key = try self.storageKey(filename);
@@ -110,23 +125,16 @@ pub const FileService = struct {
 };
 
 fn wallNow(io: std.Io) i64 {
-    const zigmodu = @import("zigmodu");
     return zigmodu.time.wallClockSeconds(io);
 }
 
 /// 允许上传的扩展名白名单(排除 html/svg/脚本等可执行内容)。
+/// 内容层校验由 `FileService.save` 内的 `UploadGuard.check` 完成。
 const allowed_extensions = [_][]const u8{
     "txt", "md",   "csv", "json", "log",  "pdf", "doc",  "docx", "xls", "xlsx",
     "ppt", "pptx", "png", "jpg",  "jpeg", "gif", "webp", "zip",  "gz",  "tar",
     "7z",  "mp4",  "mov", "mp3",  "wav",  "bin",
 };
-
-fn extensionAllowed(ext: []const u8) bool {
-    for (allowed_extensions) |e| {
-        if (std.ascii.eqlIgnoreCase(e, ext)) return true;
-    }
-    return false;
-}
 
 fn extensionOf(filename: []const u8) []const u8 {
     if (std.mem.lastIndexOfScalar(u8, filename, '.')) |i| {

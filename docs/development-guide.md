@@ -217,10 +217,11 @@ try tx.commit();
 
 ### 3.6 zent ≥ v0.30 新增能力(按需采用)
 
-当前基线 zent v0.34.0 + zigmodu v0.15.36,以下能力可直接用:
+当前基线 zent v0.67.0 + zigmodu v0.20.1,以下能力可直接用:
 
 - 业务键 upsert:`CreateBuilder.SaveOrUpdateOn(&.{"code"})` /
-  `SaveIgnore()`(v0.30)——替代「exists 判断后 insert」,天然幂等;
+  `SaveIgnore()`(v0.30)——替代「exists 判断后 insert」,天然幂等
+  (本项目 mail_template 已用 `SaveOrUpdateOnWith`,见 §3.6 下文);
 - NULL 安全取值:`Row.tryGetInt/tryGetText/...`(v0.30,NULL 返回
   `error.NullColumn`,替代手写 null 分支);
 - 精确金额列:`field.Decimal(name)`(v0.31,扫成 owned
@@ -246,7 +247,8 @@ try tx.commit();
     ⚠️ `AggregateBy` 的**字符串分组键在 SQLite 上是坏的**:`readAggValue`
     先试 `getInt`,`sqlite3_column_int64` 把 TEXT 键强转为 `.int = 0`,
     各组计数会全部串零(PG 走纯文本协议 `parseInt` 失败后落到
-    `getText`,不受影响)。上游修复前,字符串分组的统计保持逐谓词
+    `getText`,不受影响)。**v0.67.0 复查仍未修**(readAggValue 依旧
+    getInt 优先)。上游修复前,字符串分组的统计保持逐谓词
     `Count`(参考 task `countByStatus` 注释),整数分组键可放心用;
   - 按列 upsert 表达式:`SaveOrUpdateOnWith` + `UpsertSetExpr`
     (`{t:col}`/`{x:col}` 模板,SQLite 走 ON CONFLICT DO UPDATE)(v0.34);
@@ -257,6 +259,35 @@ try tx.commit();
   - Create/BulkInsert 拦截器(v0.33,`whereEq` 在 create 缺列时填充,
     显式值保留)——租户注入收敛到 client 级的可行性进一步增强,
     本项目仍用手写谓词约定(§4),切换需单独评估。
+
+- zent v0.35–v0.67 要点(升级即受益的行为修复 + 按需采用):
+  - **迁移默认加锁**(v0.36):`migrateSchema` 默认持 advisory lock 10s
+    (`lock_timeout_ms = 0` 可关),多实例并发迁移改为串行,
+    冲突返回 `error.MigrationLockTimeout`;
+  - `crud.update`/`increment` 语义统一为 **matched 行数**(v0.64):
+    MySQL 下幂等更新不再被误判为「行不存在」,条件更新判冲突的
+    既有写法(检查 `Save()/Exec()` 返回 0)在三个方言上语义一致;
+  - `cursorPage` 拒绝非整数游标列(v0.64.1,`error.InvalidCursorColumn`,
+    此前是静默漏过);
+  - arena 扫描(v0.5x):`AllIn/FirstIn/SaveIn/queryRowsIn` 一次
+    `arena.deinit()` 释放整页,严禁对 arena 拥有的行调 `deinitEntity`
+    (double free);本项目沿用 `All()` + 逐行 `deinitEntity` 模式,
+    新代码按页处理大结果集时可考虑 `*In` 家族;
+  - 视图/外键/漂移检测、连接池并发不变量、借出预算
+    (`borrowWithTimeout`)等,详见 zent CHANGELOG——纯增量,用到再查。
+
+- zigmodu v0.15.37–v0.20.1 要点:
+  - **`http.UploadGuard`**(0.15.46,本项目 file 模块已接入):按字节
+    嗅探判定文件类型,主动内容(SVG/HTML)改名也拒收;扩展名/格式
+    白名单、扩展名↔内容一致性、单文件大小,判定顺序见其文档头;
+    multipart 场景用 `extractMultipart` + `checkForm`,裸 body 用
+    `check(filename, data, policy)`;
+  - RFC 7807 错误体全局开关(0.15.45,默认关闭,未启用);
+  - `ctx.route_template` 指标标签统一带前导斜杠(0.15.46)——按旧形状
+    写死的 dashboard 查询需同步;
+  - v0.16–v0.20 新增运行时底座(worker 监督/扇出、SagaOrchestrator
+    崩溃续跑、ClusterView、架构引擎编译期图检查)——与本项目
+    自建 task 队列定位重叠,按需单独评估,不在适配范围。
 
 ---
 
@@ -304,8 +335,12 @@ try tx.commit();
 5. **编译期**:路径依赖(`.path`)的本地缓存以 fingerprint 为键,临时切回
    sibling 检出联调上游改动后,如遇「改了没生效」,用
    `zig build --summary all` 确认是否重编译,必要时换
-   `ZIG_GLOBAL_CACHE_DIR=/tmp/x` 强制全量。git hash 依赖不存在此问题
-   (内容哈希即缓存键)。
+   `ZIG_GLOBAL_CACHE_DIR=/tmp/x` 强制全量。git hash 依赖本身以内容哈希
+   为缓存键,但本项目 `zig-pkg/` 离线仓 + `.zig-cache` 组合下,
+   `zig fetch --save` 换版本后**旧模块图可能滞留**——构建仍编译旧版
+   却安静通过(2026-09 升级 v0.67 实测踩过)。升级依赖后务必核对编译
+   命令里 `-M<dep>=zig-pkg/<name>-<version>-…` 指向新版本,或先
+   `rm -rf .zig-cache` 再构建。
 
 ---
 
@@ -348,6 +383,7 @@ try tx.commit();
 | 空集 `Sum` 抛 TypeMismatch | 用 `SumOrZero`(COALESCE 回 0) |
 | `AggregateBy` 字符串分组键 | SQLite 上键被强转为 int 0,勿用(见 §3.6) |
 | 升级依赖后缓存假象 | `--summary all` / 换 global cache 验证真实编译 |
+| `zig fetch` 换版后仍编旧依赖 | 核对 `-M<dep>=zig-pkg/…` 版本 / `rm -rf .zig-cache`(§5.5) |
 | 敏感列全行读出 | `q.Select` 列投影 |
 | 循环逐条写 | `IN (...)` 批量 / batchCreate |
 | 未引用函数的编译错误 | 补测试激活该路径 |

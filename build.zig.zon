@@ -9,12 +9,12 @@
         //   .zent = .{ .path = "../../zig_ws/zent" },
         //   .zigmodu = .{ .path = "../../zig_ws/zigmodu", .fingerprint = 0x7aa42d07b32f8d53 },
         .zent = .{
-            .url = "git+https://github.com/chy3xyz/zent?ref=v0.34.0#119f6a22c396a82d802f76890a9489cbd521cbb8",
-            .hash = "zent-0.34.0-oiur-46_EAAQKFZBOWrJhi-5Epx_-r5widvnFmOuzVTC",
+            .url = "git+https://github.com/chy3xyz/zent?ref=v0.67.0#e60d81e9c0c1247399e5b4e5033d043537521303",
+            .hash = "zent-0.67.0-oiur-wPVHgCWBSNZ6sSQNgvMQKaSsBMf18qeOVLrc-C8",
         },
         .zigmodu = .{
-            .url = "git+https://github.com/chy3xyz/zigmodu?ref=v0.15.36#66b4b0621b52853c447e8903240035c1eca81d4b",
-            .hash = "zigmodu-0.15.35-U40vs6q5QAAKxtU7YtTJfNCS-TiJPStnT7pza_N9a6Ig",
+            .url = "git+https://github.com/chy3xyz/zigmodu?ref=v0.20.1#c541671738684da5171fefbb343a0a723da73959",
+            .hash = "zigmodu-0.20.1-U40vsyhBSQA-1GkBx8ECcegF_QkqjDgUkj92LQlKjhyp",
         },
     },
     .paths = .{

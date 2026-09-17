@@ -330,6 +330,41 @@ test "file store metadata CRUD" {
     try std.testing.expect((try file_store.getById(id)) == null);
 }
 
+test "file service: UploadGuard sniffs bytes — renamed active content rejected" {
+    const allocator = std.testing.allocator;
+    var env = try openMemory(allocator);
+    defer env.deinit();
+    var file_store = file.persistence.FileStore.init(allocator, env.client);
+    // 独立临时目录,测试结束整体删除,不污染仓库。
+    const dir = "/tmp/zenaipa-uploadguard-test";
+    var file_svc = file.service.FileService.init(allocator, std.testing.io, &file_store, dir, 1024);
+
+    // 改名绕过被堵:HTML 字节改名 .txt(旧实现只查扩展名,会放行)。
+    try std.testing.expectError(error.FileTypeNotAllowed, file_svc.save(1, 1, "evil.txt", "text/plain", "<html><script>alert(1)</script></html>"));
+    // SVG 是脚本容器,同样按字节拒绝。
+    try std.testing.expectError(error.FileTypeNotAllowed, file_svc.save(1, 1, "pic.svg", "image/svg+xml", "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"));
+    // 扩展名不在白名单。
+    try std.testing.expectError(error.FileTypeNotAllowed, file_svc.save(1, 1, "shell.php", "application/x-php", "<?php echo 1;"));
+    // 超限。
+    const big: [2048]u8 = @splat('x');
+    try std.testing.expectError(error.FileTooLarge, file_svc.save(1, 1, "big.txt", "text/plain", &big));
+
+    // 合法文件照常落盘:PNG 字节 + .png 名。
+    const png = "\x89PNG\r\n\x1a\n" ++ "rest-of-png-bytes";
+    var ok = try file_svc.save(1, 1, "avatar.png", "image/png", png);
+    defer ok.free(allocator);
+    try std.testing.expectEqualStrings("avatar.png", ok.name);
+    // 普通文本(md 开头无主动标签)不受影响。
+    var md = try file_svc.save(1, 1, "notes.md", "text/markdown", "# title\nplain text");
+    md.free(allocator);
+
+    // 清理:delete 会同时删磁盘文件与元数据,最后移除目录。
+    var listed = try file_svc.list(1, 100, null, null, null, false);
+    defer listed.free(allocator);
+    for (listed.items) |r| try file_svc.delete(r.id);
+    std.Io.Dir.cwd().deleteDir(std.testing.io, dir) catch {};
+}
+
 test "HTTP dispatch: public auth flow (register -> me) via Testkit" {
     const allocator = std.testing.allocator;
     var env = try openMemory(allocator);
