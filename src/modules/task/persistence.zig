@@ -306,6 +306,11 @@ pub const TaskStore = struct {
     }
 
     pub fn countByStatus(self: *TaskStore) !StatusCounts {
+        // 曾试改 zent v0.34 `AggregateBy("COUNT(*)", "status")` 一条 GROUP BY,
+        // 但 SQLite 的 readAggValue 先走 getInt,TEXT 分组键被 column_int64
+        // 强转为 .int = 0,五组计数全串成 0(PG 不受影响,见指南 §3.6);
+        // 在上游修复前保持逐状态 Count——status 走 (status,available_at)
+        // 索引,5 次聚合对仪表盘频次可接受。
         var counts: StatusCounts = .{};
         const preds = self.client.task.predicates;
         inline for (.{

@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Adopted zent v0.34 `SumOrZero` in `ai.quotaForUser`** — the empty-window
+  path (user with no runs in the quota window) previously propagated
+  `error.TypeMismatch` from a bare `Sum` over SQL NULL; it now COALESCEs to
+  0. New test assertion covers the empty window (34 backend tests total).
 - **Adopted zent v0.34 capabilities where the guide already called for them:**
   - `mail_template` upsert replaced the "exists → insert/update" two-step
     with a single-statement business-key upsert (`SaveOrUpdateOnWith` on
@@ -35,11 +39,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     loop (§5.2 批量操作待办); over-budget tasks still go through
     `markFailedOrRetry` individually. New round-trip test covers both
     branches (34 backend tests total).
-- Not adopted (evaluated): zent v0.33 Create/BulkInsert interceptors for
-  tenant injection (guide §4 keeps hand-written predicates; switching needs
-  a separate assessment) and zigmodu v0.15.36 custom 404 handler (this
-  project's `{code,msg,data}` envelope already matches the framework
-  default).
+- Not adopted (evaluated):
+  - zent v0.33 Create/BulkInsert interceptors for tenant injection (guide
+    §4 keeps hand-written predicates; switching needs a separate assessment);
+  - zigmodu v0.15.36 custom 404 handler (this project's `{code,msg,data}`
+    envelope already matches the framework default);
+  - zent v0.34 `AggregateBy` for `task.countByStatus` (5 COUNTs → 1 GROUP BY):
+    **blocked by an upstream SQLite bug** — `readAggValue` tries `getInt`
+    first and `sqlite3_column_int64` coerces TEXT group keys to `.int = 0`,
+    collapsing every status count to 0 (PostgreSQL unaffected via its text
+    protocol). Kept per-status `Count` (covered by the new direct
+    `countByStatus` assertions); pitfall documented in guide §3.6/§7;
+  - growth-table `cursorPage` conversion (guide §5.4): breaking change to the
+    page-based HTTP contract + frontend pagination; deferred with a
+    documented migration path (add cursor endpoints for programmatic
+    consumers first).
 
 ### Dependencies (v0.32.1 + v0.15.32 round)
 

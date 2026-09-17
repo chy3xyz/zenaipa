@@ -284,6 +284,17 @@ test "task queue: requeueStale batch-requeues live claims, fails over-budget" {
     defer rb.free(allocator);
     try std.testing.expectEqualStrings("failed", rb.status);
     try std.testing.expectEqual(@as(i64, 1000), rb.finished_at);
+
+    // 状态计数往返(逐状态 Count;AggregateBy 的 TEXT 键坑见 persistence 注释)。
+    const c = try task_store.countByStatus();
+    try std.testing.expectEqual(@as(i64, 2), c.pending);
+    try std.testing.expectEqual(@as(i64, 0), c.claimed);
+    try std.testing.expectEqual(@as(i64, 1), c.failed);
+    try std.testing.expectEqual(@as(i64, 0), c.done);
+    try std.testing.expectEqual(@as(i64, 0), c.canceled);
+    _ = try task_store.createTask("mail.send", "{}", "claimed", 1, 0, 2, "", 0, 100);
+    const c2 = try task_store.countByStatus();
+    try std.testing.expectEqual(@as(i64, 1), c2.claimed);
 }
 
 test "notification store: create, unread count, mark read" {
@@ -684,11 +695,17 @@ test "ai: run quota counts within rolling window + health workflow" {
     _ = try ai_store.createRun(0, 7, 1, "chat", "hi", "test-model", 12, 34, 3, 2, 1, "ok", "", 200);
     _ = try ai_store.createRun(0, 8, 1, "chat", "hi", "test-model", 0, 0, 0, 0, 0, "ok", "", 300);
     try std.testing.expectEqual(@as(i64, 2), try ai_store.runCountForUser(7, 50));
-    // zent v0.29.4:Sum 返回 f64;quotaForUser 用 @intFromFloat 显式转换并聚合校验。
+    // zent v0.34 SumOrZero:有数据窗口照常聚合;空窗口(无 run)回 0 而非
+    // `Sum` 对 SQL NULL 抛 error.TypeMismatch。
     {
         const agg = try ai_store.quotaForUser(7, 50);
         try std.testing.expectEqual(@as(i64, 12), agg.tokens_in);
         try std.testing.expectEqual(@as(i64, 34), agg.tokens_out);
+    }
+    {
+        const empty = try ai_store.quotaForUser(999, 50);
+        try std.testing.expectEqual(@as(i64, 0), empty.tokens_in);
+        try std.testing.expectEqual(@as(i64, 0), empty.tokens_out);
     }
     {
         // listRuns 按 created_at 降序:最新一条(200)带用量快照。

@@ -207,7 +207,10 @@ try tx.commit();
 ### 3.5 查询聚合与类型
 
 - `Sum` 返回 `f64`(zent v0.29.4 起),转整型用 `@intFromFloat(...)`,
-  不要 `@intCast`。
+  不要 `@intCast`。**空集(无匹配行)时 `Sum` 对 SQL NULL 抛
+  `error.TypeMismatch`——配额/用量这类「可能没数据」的聚合一律用
+  `SumOrZero`**(v0.34,COALESCE 回 0;本项目 `quotaForUser` 已切换,
+  空窗口断言见 tests.zig)。
 - `Count` 返回 `i64`;`q.paged` / `paginatedWithOptions` 内部一次调用完成
   count + limit/offset。
 - 大表深分页:OFFSET 分页是 O(n),增长表切 `crud.cursorPage`(keyset)。
@@ -239,7 +242,12 @@ try tx.commit();
   - 原生 SQL 参数化片段 `sql.RawArgs`(v0.34,方言占位符重绑定,参数个数
     不匹配返回 `error.RawArgCountMismatch`);
   - 聚合查询:`SumOrZero`/`AggregateOne`/`AggregateText`(精确金额文本)/
-    `AggregateBy`(分组,自动带 Where+软删+Having)(v0.34);
+    `AggregateBy`(分组,自动带 Where+软删+Having)(v0.34)。
+    ⚠️ `AggregateBy` 的**字符串分组键在 SQLite 上是坏的**:`readAggValue`
+    先试 `getInt`,`sqlite3_column_int64` 把 TEXT 键强转为 `.int = 0`,
+    各组计数会全部串零(PG 走纯文本协议 `parseInt` 失败后落到
+    `getText`,不受影响)。上游修复前,字符串分组的统计保持逐谓词
+    `Count`(参考 task `countByStatus` 注释),整数分组键可放心用;
   - 按列 upsert 表达式:`SaveOrUpdateOnWith` + `UpsertSetExpr`
     (`{t:col}`/`{x:col}` 模板,SQLite 走 ON CONFLICT DO UPDATE)(v0.34);
   - 行级锁变体:`ForUpdateWith(LockOpts{ .of/.skip_locked/.nowait })`,
@@ -289,7 +297,10 @@ try tx.commit();
 3. **N+1**:列表 + 每行查关联,改 zent `WithEdge`(同 graph 内)或一次
    `findByIds` 再内存分组。
 4. **分页**:`audit_log`/`ai_run`/`notification` 这类增长表,深分页换
-   `cursorPage`。
+   `cursorPage`。注意:现有 list 接口是 `page/page_size` 契约、前端按页码
+   翻页,整体切换是破坏性改动(API+前端同改);当前管理端翻页深度有限,
+   暂缓——若某列表出现真实深分页流量,先给该表加 cursor 端点供程序化
+   消费方使用,再考虑迁移管理端。
 5. **编译期**:路径依赖(`.path`)的本地缓存以 fingerprint 为键,临时切回
    sibling 检出联调上游改动后,如遇「改了没生效」,用
    `zig build --summary all` 确认是否重编译,必要时换
@@ -334,6 +345,8 @@ try tx.commit();
 | 两步写无事务 | `beginTx` + `commit`,defer deinit 兜底回滚 |
 | 排序列直接拼 SQL | schema 字段白名单 + `paginatedWithOptions` 二次校验 |
 | `Where` 传动态 slice | zent ≥ v0.29.7 支持 `[]sql.Predicate`;旧版本用元组 |
+| 空集 `Sum` 抛 TypeMismatch | 用 `SumOrZero`(COALESCE 回 0) |
+| `AggregateBy` 字符串分组键 | SQLite 上键被强转为 int 0,勿用(见 §3.6) |
 | 升级依赖后缓存假象 | `--summary all` / 换 global cache 验证真实编译 |
 | 敏感列全行读出 | `q.Select` 列投影 |
 | 循环逐条写 | `IN (...)` 批量 / batchCreate |
