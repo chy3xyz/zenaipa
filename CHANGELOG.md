@@ -81,6 +81,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supervision / SagaOrchestrator / ClusterView — overlap with the
   built-in task queue).
 
+### Fixed
+
+- **CI resurrected** (red since late August for infrastructure reasons,
+  not code): `mlugg/setup-zig@v1` builds old-pattern URLs that 404 for
+  current dev builds and `0.17.0-dev.1567` had been garbage-collected
+  from every mirror — replaced with a direct ziglang.org tarball
+  download pinned to `0.17.0-dev.1970+67f39b551` (the toolchain this
+  release was built and tested with). Frontend: `web/package-lock.json`
+  was never committed (and an unanchored `package-lock.json` gitignore
+  pattern was hiding it), breaking `npm ci` + the setup-node cache —
+  anchored the pattern and committed the real lockfile.
+
 ### Docs
 
 - `docs/development-guide.md`: new-capability inventories per round
