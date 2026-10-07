@@ -6,10 +6,12 @@ import {
   toApiError,
   updateProfile,
 } from '#ui/api';
+import { FormField, useFeedback } from '#ui/components';
 import { useAuth } from '#ui/hooks';
 import { formatDateTime } from '#ui/utils';
 
 function Profile() {
+  const feedback = useFeedback();
   const [auth, actions] = useAuth();
   const user = () => auth.user;
 
@@ -17,7 +19,6 @@ function Profile() {
   const [name, setName] = createSignal(user()?.name ?? '');
   const [email, setEmail] = createSignal(user()?.email ?? '');
   const [profileError, setProfileError] = createSignal<string | null>(null);
-  const [profileOk, setProfileOk] = createSignal<string | null>(null);
   const [profileSaving, setProfileSaving] = createSignal(false);
 
   // Password change
@@ -25,26 +26,23 @@ function Profile() {
   const [newPassword, setNewPassword] = createSignal('');
   const [confirm, setConfirm] = createSignal('');
   const [pwError, setPwError] = createSignal<string | null>(null);
-  const [pwOk, setPwOk] = createSignal<string | null>(null);
   const [pwSaving, setPwSaving] = createSignal(false);
 
   // Verification
   const [verifySending, setVerifySending] = createSignal(false);
-  const [verifyMsg, setVerifyMsg] = createSignal<string | null>(null);
 
   const onSaveProfile = async (e: SubmitEvent) => {
     e.preventDefault();
     if (profileSaving()) return;
     setProfileSaving(true);
     setProfileError(null);
-    setProfileOk(null);
     try {
       const fresh = await updateProfile({
         name: name().trim(),
         email: email().trim(),
       });
       actions.setCurrentUser(fresh);
-      setProfileOk('资料已保存');
+      feedback.show('资料已保存', 'success');
     } catch (err) {
       setProfileError(toApiError(err).message);
     } finally {
@@ -61,13 +59,12 @@ function Profile() {
     }
     setPwSaving(true);
     setPwError(null);
-    setPwOk(null);
     try {
       await changePassword({ old_password: oldPassword(), new_password: newPassword() });
       setOldPassword('');
       setNewPassword('');
       setConfirm('');
-      setPwOk('密码已更新');
+      feedback.show('密码已更新', 'success');
     } catch (err) {
       setPwError(toApiError(err).message);
     } finally {
@@ -78,12 +75,11 @@ function Profile() {
   const onSendVerification = async () => {
     if (verifySending()) return;
     setVerifySending(true);
-    setVerifyMsg(null);
     try {
       await sendVerification();
-      setVerifyMsg('验证邮件已发送，请查收邮箱。');
+      feedback.show('验证邮件已发送，请查收邮箱。', 'success');
     } catch (err) {
-      setVerifyMsg(toApiError(err).message);
+      feedback.show(toApiError(err).message, 'error');
     } finally {
       setVerifySending(false);
     }
@@ -98,9 +94,7 @@ function Profile() {
 
       <Show when={!user()?.verified}>
         <div role="alert" class="alert alert-warning py-2 text-sm">
-          <span>
-            邮箱尚未验证。{verifyMsg() ?? '部分功能可能受限。'}
-          </span>
+          <span>邮箱尚未验证，部分功能可能受限。</span>
           <button type="button" class="btn btn-sm btn-warning" disabled={verifySending()} onClick={onSendVerification}>
             {verifySending() ? '发送中…' : '发送验证邮件'}
           </button>
@@ -169,19 +163,12 @@ function Profile() {
                   {profileError()}
                 </div>
               </Show>
-              <Show when={profileOk()}>
-                <div role="alert" class="alert alert-success py-2 text-sm">
-                  {profileOk()}
-                </div>
-              </Show>
-              <label class="form-control w-full">
-                <span class="label-text mb-1">姓名</span>
-                <input type="text" class="input input-bordered input-sm" value={name()} onInput={(e) => setName(e.currentTarget.value)} required />
-              </label>
-              <label class="form-control w-full">
-                <span class="label-text mb-1">邮箱</span>
-                <input type="email" class="input input-bordered input-sm" value={email()} onInput={(e) => setEmail(e.currentTarget.value)} required />
-              </label>
+              <FormField label="姓名" required>
+                <input type="text" class="input input-bordered input-sm w-full" value={name()} onInput={(e) => setName(e.currentTarget.value)} required />
+              </FormField>
+              <FormField label="邮箱" required>
+                <input type="email" class="input input-bordered input-sm w-full" value={email()} onInput={(e) => setEmail(e.currentTarget.value)} required />
+              </FormField>
               <button type="submit" class="btn btn-primary btn-sm self-end" disabled={profileSaving()}>
                 {profileSaving() ? '保存中…' : '保存资料'}
               </button>
@@ -196,23 +183,15 @@ function Profile() {
                   {pwError()}
                 </div>
               </Show>
-              <Show when={pwOk()}>
-                <div role="alert" class="alert alert-success py-2 text-sm">
-                  {pwOk()}
-                </div>
-              </Show>
-              <label class="form-control w-full">
-                <span class="label-text mb-1">当前密码</span>
-                <input type="password" class="input input-bordered input-sm" value={oldPassword()} onInput={(e) => setOldPassword(e.currentTarget.value)} required />
-              </label>
-              <label class="form-control w-full">
-                <span class="label-text mb-1">新密码（至少 8 位）</span>
-                <input type="password" class="input input-bordered input-sm" value={newPassword()} onInput={(e) => setNewPassword(e.currentTarget.value)} minlength={8} required />
-              </label>
-              <label class="form-control w-full">
-                <span class="label-text mb-1">确认新密码</span>
-                <input type="password" class="input input-bordered input-sm" value={confirm()} onInput={(e) => setConfirm(e.currentTarget.value)} minlength={8} required />
-              </label>
+              <FormField label="当前密码" required>
+                <input type="password" class="input input-bordered input-sm w-full" value={oldPassword()} onInput={(e) => setOldPassword(e.currentTarget.value)} required />
+              </FormField>
+              <FormField label="新密码" required hint="至少 8 位">
+                <input type="password" class="input input-bordered input-sm w-full" value={newPassword()} onInput={(e) => setNewPassword(e.currentTarget.value)} minlength={8} required />
+              </FormField>
+              <FormField label="确认新密码" required>
+                <input type="password" class="input input-bordered input-sm w-full" value={confirm()} onInput={(e) => setConfirm(e.currentTarget.value)} minlength={8} required />
+              </FormField>
               <button type="submit" class="btn btn-primary btn-sm self-end" disabled={pwSaving()}>
                 {pwSaving() ? '提交中…' : '更新密码'}
               </button>

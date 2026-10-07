@@ -1,3 +1,5 @@
+import type { PageResult } from '#ui/api/envelope';
+
 export interface FileItem {
   id: number;
   name: string;
@@ -7,9 +9,4 @@ export interface FileItem {
   created_at: number;
 }
 
-export interface FileListResult {
-  list: FileItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export interface FileListResult extends PageResult<FileItem> {}

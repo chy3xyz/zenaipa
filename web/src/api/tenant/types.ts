@@ -1,3 +1,5 @@
+import type { PageResult } from '#ui/api/envelope';
+
 export interface TenantItem {
   id: number;
   name: string;
@@ -6,12 +8,7 @@ export interface TenantItem {
   updated_at: number;
 }
 
-export interface TenantListResult {
-  list: TenantItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export interface TenantListResult extends PageResult<TenantItem> {}
 
 export interface CreateTenantRequest {
   name: string;

@@ -1,3 +1,5 @@
+import type { PageResult } from '#ui/api/envelope';
+
 export interface NotificationItem {
   id: number;
   title: string;
@@ -7,9 +9,4 @@ export interface NotificationItem {
   created_at: number;
 }
 
-export interface NotificationListResult {
-  list: NotificationItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export interface NotificationListResult extends PageResult<NotificationItem> {}

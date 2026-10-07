@@ -1,5 +1,4 @@
-import { For, Show, createSignal } from 'solid-js';
-import { useToast } from '#ui/components';
+import { createSignal, For, onMount, Show } from 'solid-js';
 
 import {
   cancelTask,
@@ -8,11 +7,18 @@ import {
   purgeTasks,
   retryTask,
   taskStats,
-  toApiError,
   type TaskItem,
   type TaskStats,
 } from '#ui/api';
-import DataTable, { type Column } from '#ui/components/DataTable';
+import {
+  AdminCrudPage,
+  DataTable,
+  SearchBar,
+  StatCard,
+  useFeedback,
+  type Column,
+  type SearchValues,
+} from '#ui/components';
 import { usePaged } from '#ui/hooks/usePaged';
 import { formatDateTime } from '#ui/utils';
 
@@ -34,12 +40,17 @@ const STATUS_CLASS: Record<string, string> = {
   canceled: 'badge-outline',
 };
 
+const STATUS_OPTIONS = Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }));
+
 function Tasks() {
-  const toast = useToast();
+  const feedback = useFeedback();
   const [stats, setStats] = createSignal<TaskStats | null>(null);
   const [status, setStatus] = createSignal('');
 
-  const paged = usePaged<TaskItem>((page, pageSize) => listTasks(page, pageSize, status() || undefined), PAGE_SIZE);
+  const paged = usePaged<TaskItem>((page, pageSize) => listTasks(page, pageSize, status() || undefined), {
+    pageSize: PAGE_SIZE,
+    watch: () => status(),
+  });
 
   const loadStats = async () => {
     try {
@@ -51,16 +62,24 @@ function Tasks() {
 
   const refresh = () => {
     void loadStats();
-    void paged.reload();
+    void paged.refresh();
   };
 
-  const run = async (fn: () => Promise<unknown>) => {
-    try {
-      await fn();
-      refresh();
-    } catch (err) {
-      toast.show(toApiError(err).message, 'error');
-    }
+  onMount(() => {
+    void loadStats();
+  });
+
+  const onSearch = (values: SearchValues) => {
+    setStatus((values.status as string) ?? '');
+  };
+
+  const run = (opts: { title: string; message?: string; danger?: boolean; action: () => Promise<unknown>; success: string }) => {
+    void feedback.runAction({
+      confirm: { title: opts.title, message: opts.message, danger: opts.danger },
+      action: opts.action,
+      success: opts.success,
+      onDone: refresh,
+    });
   };
 
   const columns: Column<TaskItem>[] = [
@@ -102,100 +121,105 @@ function Tasks() {
   ];
 
   return (
-    <div class="space-y-4">
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-xl font-semibold">任务中心</h2>
-          <p class="text-sm text-base-content/60">后台任务队列（邮件发送、定时清理等）</p>
-        </div>
-        <div class="flex gap-2">
-          <button type="button" class="btn btn-outline btn-sm" onClick={() => run(purgeTasks)}>
-            清理已完成
-          </button>
-          <button type="button" class="btn btn-primary btn-sm" onClick={refresh}>
-            刷新
-          </button>
-        </div>
-      </div>
-
-      <Show when={stats()}>
-        <div class="grid grid-cols-5 gap-3">
-          <For
-            each={[
-              ['等待中', stats()!.pending, 'badge-ghost'],
-              ['执行中', stats()!.claimed, 'badge-info'],
-              ['已完成', stats()!.done, 'badge-success'],
-              ['失败', stats()!.failed, 'badge-error'],
-              ['已取消', stats()!.canceled, 'badge-outline'],
-            ]}
-          >
-            {([label, count, cls]) => (
-              <div class="card bg-base-100 shadow-sm">
-                <div class="card-body items-center gap-1 p-4">
-                  <span class={`badge badge-sm ${cls}`}>{label}</span>
-                  <span class="text-2xl font-semibold">{count}</span>
-                </div>
-              </div>
-            )}
-          </For>
-        </div>
-      </Show>
-
-      <div class="flex items-center gap-2">
-        <select
-          class="select select-bordered select-sm"
-          value={status()}
-          onChange={(e) => {
-            setStatus(e.currentTarget.value);
-            void paged.reload(1);
-          }}
+    <AdminCrudPage
+      title="任务中心"
+      description="后台任务队列（邮件发送、定时清理等）"
+      total={paged.total()}
+      onRefresh={refresh}
+      extra={
+        <button
+          type="button"
+          class="btn btn-outline btn-sm"
+          onClick={() =>
+            run({
+              title: '清理已完成任务',
+              message: '将删除所有已完成/已取消的任务记录，确定继续吗？',
+              danger: true,
+              action: purgeTasks,
+              success: '已清理',
+            })
+          }
         >
-          <option value="">全部状态</option>
-          <option value="pending">等待中</option>
-          <option value="claimed">执行中</option>
-          <option value="done">已完成</option>
-          <option value="failed">失败</option>
-          <option value="canceled">已取消</option>
-        </select>
-      </div>
-
-      <DataTable
-        columns={columns}
-        rows={paged.items()}
-        rowKey={(t) => t.id}
-        total={paged.total()}
-        page={paged.page()}
-        totalPages={paged.totalPages()}
-        loading={paged.loading()}
-        error={paged.error()}
-        emptyText="暂无任务"
-        onPageChange={(p) => void paged.reload(p)}
-        actions={(task) => (
-          <>
-            <Show when={task.status === 'failed'}>
-              <button type="button" class="btn btn-ghost btn-xs" onClick={() => run(() => retryTask(task.id))}>
-                重试
-              </button>
-            </Show>
-            <Show when={task.status === 'pending'}>
-              <button type="button" class="btn btn-ghost btn-xs" onClick={() => run(() => cancelTask(task.id))}>
-                取消
-              </button>
-            </Show>
-            <button
-              type="button"
-              class="btn btn-ghost btn-xs text-error"
-              onClick={() => {
-                if (!window.confirm(`确定删除任务 #${task.id} 吗？`)) return;
-                void run(() => deleteTask(task.id));
-              }}
+          清理已完成
+        </button>
+      }
+      filter={
+        <SearchBar
+          fields={[{ key: 'status', label: '状态', type: 'select', options: STATUS_OPTIONS }]}
+          onSearch={onSearch}
+        />
+      }
+    >
+      <div class="space-y-4">
+        <Show when={stats()}>
+          <div class="grid grid-cols-2 gap-3 md:grid-cols-5">
+            <For
+              each={[
+                { label: '等待中', value: stats()!.pending },
+                { label: '执行中', value: stats()!.claimed },
+                { label: '已完成', value: stats()!.done },
+                { label: '失败', value: stats()!.failed },
+                { label: '已取消', value: stats()!.canceled },
+              ]}
             >
-              删除
-            </button>
-          </>
-        )}
-      />
-    </div>
+              {(s) => <StatCard label={s.label} value={s.value} />}
+            </For>
+          </div>
+        </Show>
+
+        <DataTable
+          columns={columns}
+          rows={paged.items()}
+          rowKey={(t) => t.id}
+          total={paged.total()}
+          page={paged.page()}
+          totalPages={paged.totalPages()}
+          loading={paged.loading()}
+          error={paged.error()}
+          pageSize={paged.pageSize()}
+          onPageSizeChange={(n) => void paged.changePageSize(n)}
+          emptyText="暂无任务"
+          onPageChange={(p) => void paged.reload(p)}
+          actions={(task) => (
+            <>
+              <Show when={task.status === 'failed'}>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs"
+                  onClick={() => run({ title: '重试任务', action: () => retryTask(task.id), success: '已重新入队' })}
+                >
+                  重试
+                </button>
+              </Show>
+              <Show when={task.status === 'pending'}>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs"
+                  onClick={() => run({ title: '取消任务', action: () => cancelTask(task.id), success: '已取消' })}
+                >
+                  取消
+                </button>
+              </Show>
+              <button
+                type="button"
+                class="btn btn-ghost btn-xs text-error"
+                onClick={() =>
+                  run({
+                    title: '删除任务',
+                    message: `确定删除任务 #${task.id} 吗？`,
+                    danger: true,
+                    action: () => deleteTask(task.id),
+                    success: '已删除',
+                  })
+                }
+              >
+                删除
+              </button>
+            </>
+          )}
+        />
+      </div>
+    </AdminCrudPage>
   );
 }
 

@@ -1,3 +1,5 @@
+import type { PageResult } from '#ui/api/envelope';
+
 export interface MailTemplateItem {
   code: string;
   subject: string;
@@ -5,9 +7,4 @@ export interface MailTemplateItem {
   updated_at: number;
 }
 
-export interface MailTemplateListResult {
-  list: MailTemplateItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export interface MailTemplateListResult extends PageResult<MailTemplateItem> {}

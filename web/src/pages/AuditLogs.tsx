@@ -1,7 +1,13 @@
 import { createSignal, Show } from 'solid-js';
 
-import { listAuditLogs, toApiError, type AuditLogItem } from '#ui/api';
-import DataTable, { type Column } from '#ui/components/DataTable';
+import { listAuditLogs, type AuditLogItem } from '#ui/api';
+import {
+  AdminCrudPage,
+  DataTable,
+  SearchBar,
+  type Column,
+  type SearchValues,
+} from '#ui/components';
 import { usePaged } from '#ui/hooks/usePaged';
 import { formatDateTime } from '#ui/utils';
 
@@ -27,15 +33,14 @@ function actionLabel(action: string): string {
   return ACTION_LABELS[action] ?? action;
 }
 
+interface AuditFilters {
+  actor: number;
+  action: string;
+  keyword: string;
+}
+
 function AuditLogs() {
-  const [actor, setActor] = createSignal('');
-  const [action, setAction] = createSignal('');
-  const [keyword, setKeyword] = createSignal('');
-  const [filters, setFilters] = createSignal<{ actor: number; action: string; keyword: string }>({
-    actor: 0,
-    action: '',
-    keyword: '',
-  });
+  const [filters, setFilters] = createSignal<AuditFilters>({ actor: 0, action: '', keyword: '' });
 
   const paged = usePaged<AuditLogItem>(
     (page, pageSize) =>
@@ -44,14 +49,16 @@ function AuditLogs() {
         action: filters().action || undefined,
         keyword: filters().keyword || undefined,
       }),
-    PAGE_SIZE,
+    { pageSize: PAGE_SIZE, watch: () => filters() },
   );
 
-  const onSearch = (e: SubmitEvent) => {
-    e.preventDefault();
-    const actorId = Number.parseInt(actor().trim(), 10);
-    setFilters({ actor: Number.isFinite(actorId) ? actorId : 0, action: action().trim(), keyword: keyword().trim() });
-    void paged.reload(1);
+  const onSearch = (values: SearchValues) => {
+    const actorId = Number.parseInt(String(values.actor ?? '').trim(), 10);
+    setFilters({
+      actor: Number.isFinite(actorId) ? actorId : 0,
+      action: String(values.action ?? '').trim(),
+      keyword: String(values.keyword ?? '').trim(),
+    });
   };
 
   const columns: Column<AuditLogItem>[] = [
@@ -95,39 +102,22 @@ function AuditLogs() {
   ];
 
   return (
-    <div class="space-y-4">
-      <div>
-        <h2 class="text-xl font-semibold">审计日志</h2>
-        <p class="text-sm text-base-content/60">共 {paged.total()} 条操作记录</p>
-      </div>
-
-      <form onSubmit={onSearch} class="flex flex-wrap items-center gap-2">
-        <input
-          type="number"
-          class="input input-bordered input-sm w-28"
-          placeholder="操作者 ID"
-          value={actor()}
-          onInput={(e) => setActor(e.currentTarget.value)}
+    <AdminCrudPage
+      title="审计日志"
+      description="敏感操作与登录记录"
+      total={paged.total()}
+      onRefresh={() => void paged.refresh()}
+      filter={
+        <SearchBar
+          fields={[
+            { key: 'actor', label: '操作者 ID', type: 'number', placeholder: '操作者 ID' },
+            { key: 'action', label: '操作类型', type: 'text', placeholder: '如 user.' },
+            { key: 'keyword', label: '关键词', type: 'text', placeholder: '搜索详情' },
+          ]}
+          onSearch={onSearch}
         />
-        <input
-          type="text"
-          class="input input-bordered input-sm w-44"
-          placeholder="操作类型,如 user."
-          value={action()}
-          onInput={(e) => setAction(e.currentTarget.value)}
-        />
-        <input
-          type="search"
-          class="input input-bordered input-sm w-full max-w-xs"
-          placeholder="搜索详情"
-          value={keyword()}
-          onInput={(e) => setKeyword(e.currentTarget.value)}
-        />
-        <button type="submit" class="btn btn-sm" disabled={paged.loading()}>
-          搜索
-        </button>
-      </form>
-
+      }
+    >
       <DataTable
         columns={columns}
         rows={paged.items()}
@@ -137,10 +127,12 @@ function AuditLogs() {
         totalPages={paged.totalPages()}
         loading={paged.loading()}
         error={paged.error()}
-        onPageChange={(p) => void paged.reload(p)}
+        pageSize={paged.pageSize()}
+        onPageSizeChange={(n) => void paged.changePageSize(n)}
         emptyText="暂无审计记录"
+        onPageChange={(p) => void paged.reload(p)}
       />
-    </div>
+    </AdminCrudPage>
   );
 }
 

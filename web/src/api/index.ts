@@ -8,6 +8,15 @@ export * from './audit';
 export * from './system';
 export * from './mailTemplate';
 export * from './ai';
-export { getAuthToken, setAuthToken, setUnauthorizedHandler } from './client';
+export {
+  deleteEnvelope,
+  getAuthToken,
+  getEnvelope,
+  postEnvelope,
+  putEnvelope,
+  setAuthToken,
+  setUnauthorizedHandler,
+  toApiError,
+} from './client';
 export { ApiError, unwrapEnvelope } from './envelope';
-export type { ApiEnvelope } from './envelope';
+export type { ApiEnvelope, PageResult } from './envelope';

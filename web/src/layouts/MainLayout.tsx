@@ -6,15 +6,19 @@ import {
   listNotifications,
   markAllRead,
   markRead,
-  toApiError,
   unreadCount,
   type NotificationItem,
 } from '#ui/api';
+import { useFeedback } from '#ui/components';
+import { NAV_ITEMS } from '#ui/constants/nav';
 import { useAuth } from '#ui/hooks';
-import { ROUTE_PATH } from '#ui/constants';
 import { formatDateTime } from '#ui/utils';
 
+const NAV_LINK_CLASS =
+  'block rounded-lg px-3 py-2 text-sm hover:bg-base-300 [&.active]:bg-primary [&.active]:text-primary-content';
+
 function NotificationBell() {
+  const feedback = useFeedback();
   const [open, setOpen] = createSignal(false);
   const [unread, setUnread] = createSignal(0);
   const [items, setItems] = createSignal<NotificationItem[]>([]);
@@ -40,7 +44,7 @@ function NotificationBell() {
       await markRead(id);
       await refresh();
     } catch (err) {
-      window.alert(toApiError(err).message);
+      feedback.show(toMessage(err), 'error');
     }
   };
 
@@ -49,7 +53,7 @@ function NotificationBell() {
       await markAllRead();
       await refresh();
     } catch (err) {
-      window.alert(toApiError(err).message);
+      feedback.show(toMessage(err), 'error');
     }
   };
 
@@ -58,7 +62,7 @@ function NotificationBell() {
       await deleteNotification(id);
       await refresh();
     } catch (err) {
-      window.alert(toApiError(err).message);
+      feedback.show(toMessage(err), 'error');
     }
   };
 
@@ -125,9 +129,20 @@ function NotificationBell() {
   );
 }
 
+function toMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function preferredDark(): boolean {
+  const saved = localStorage.getItem('zenaipa.theme');
+  if (saved === 'dark' || saved === 'light') return saved === 'dark';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
 function MainLayout(props: { children?: JSX.Element }) {
   const [auth, actions] = useAuth();
-  const [dark, setDark] = createSignal(localStorage.getItem('zenaipa.theme') === 'dark');
+  // 主题默认跟系统：无本地偏好时按 prefers-color-scheme 初始化（手动切换仍持久化）。
+  const [dark, setDark] = createSignal(preferredDark());
   createEffect(() => {
     document.documentElement.setAttribute('data-theme', dark() ? 'dark' : 'light');
     localStorage.setItem('zenaipa.theme', dark() ? 'dark' : 'light');
@@ -141,90 +156,15 @@ function MainLayout(props: { children?: JSX.Element }) {
           <span class="text-lg font-bold">Zenaipa</span>
         </div>
         <nav class="flex-1 space-y-1 p-3">
-          <Show when={auth.user?.admin}>
-            <A
-              href={ROUTE_PATH.dashboard}
-              class="block rounded-lg px-3 py-2 text-sm hover:bg-base-300 [&.active]:bg-primary [&.active]:text-primary-content"
-              activeClass="active"
-            >
-              概览
-            </A>
-          </Show>
-          <Show when={auth.user?.admin}>
-            <A
-              href={ROUTE_PATH.users}
-              class="block rounded-lg px-3 py-2 text-sm hover:bg-base-300 [&.active]:bg-primary [&.active]:text-primary-content"
-              activeClass="active"
-            >
-              用户管理
-            </A>
-          </Show>
-          <A
-            href={ROUTE_PATH.aiChat}
-            class="block rounded-lg px-3 py-2 text-sm hover:bg-base-300 [&.active]:bg-primary [&.active]:text-primary-content"
-            activeClass="active"
-          >
-            AI 助手
-          </A>
-          <Show when={auth.user?.admin}>
-            <A
-              href={ROUTE_PATH.aiAdmin}
-              class="block rounded-lg px-3 py-2 text-sm hover:bg-base-300 [&.active]:bg-primary [&.active]:text-primary-content"
-              activeClass="active"
-            >
-              AI 管理
-            </A>
-          </Show>
-          <Show when={auth.user?.admin}>
-            <A
-              href={ROUTE_PATH.auditLogs}
-              class="block rounded-lg px-3 py-2 text-sm hover:bg-base-300 [&.active]:bg-primary [&.active]:text-primary-content"
-              activeClass="active"
-            >
-              审计日志
-            </A>
-          </Show>
-          <Show when={auth.user?.admin}>
-            <A
-              href={ROUTE_PATH.mailTemplates}
-              class="block rounded-lg px-3 py-2 text-sm hover:bg-base-300 [&.active]:bg-primary [&.active]:text-primary-content"
-              activeClass="active"
-            >
-              邮件模板
-            </A>
-          </Show>
-          <Show when={auth.user?.admin}>
-            <A
-              href={ROUTE_PATH.tasks}
-              class="block rounded-lg px-3 py-2 text-sm hover:bg-base-300 [&.active]:bg-primary [&.active]:text-primary-content"
-              activeClass="active"
-            >
-              任务中心
-            </A>
-          </Show>
-          <Show when={auth.user?.admin}>
-            <A
-              href={ROUTE_PATH.tenants}
-              class="block rounded-lg px-3 py-2 text-sm hover:bg-base-300 [&.active]:bg-primary [&.active]:text-primary-content"
-              activeClass="active"
-            >
-              租户管理
-            </A>
-          </Show>
-          <A
-            href={ROUTE_PATH.files}
-            class="block rounded-lg px-3 py-2 text-sm hover:bg-base-300 [&.active]:bg-primary [&.active]:text-primary-content"
-            activeClass="active"
-          >
-            文件管理
-          </A>
-          <A
-            href={ROUTE_PATH.profile}
-            class="block rounded-lg px-3 py-2 text-sm hover:bg-base-300 [&.active]:bg-primary [&.active]:text-primary-content"
-            activeClass="active"
-          >
-            个人资料
-          </A>
+          <For each={NAV_ITEMS}>
+            {(item) => (
+              <Show when={!item.adminOnly || auth.user?.admin}>
+                <A href={item.href} class={NAV_LINK_CLASS} activeClass="active">
+                  {item.label}
+                </A>
+              </Show>
+            )}
+          </For>
         </nav>
         <div class="border-t border-base-300 p-3">
           <button type="button" class="btn btn-outline btn-sm w-full" onClick={() => actions.logout()}>

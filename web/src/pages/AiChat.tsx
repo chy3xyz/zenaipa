@@ -12,9 +12,11 @@ import {
   type AiSessionItem,
 } from '#ui/api';
 import { aiSessionChat } from '#ui/api/ai/path';
+import { useFeedback } from '#ui/components';
 import { APP_CONFIG } from '#ui/config';
 
 function AiChat() {
+  const feedback = useFeedback();
   const [sessions, setSessions] = createSignal<AiSessionItem[]>([]);
   const [activeId, setActiveId] = createSignal<number | null>(null);
   const [messages, setMessages] = createSignal<AiMessageItem[]>([]);
@@ -61,17 +63,18 @@ function AiChat() {
     }
   };
 
-  const onRemoveSession = async (id: number, e: MouseEvent) => {
+  const onRemoveSession = (id: number, e: MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('确定删除该会话？')) return;
-    try {
-      await deleteAiSession(id);
-      setActiveId(null);
-      setMessages([]);
-      await refreshSessions();
-    } catch (err) {
-      setError(toApiError(err).message);
-    }
+    void feedback.runAction({
+      confirm: { title: '删除会话', message: '确定删除该会话？', danger: true },
+      action: () => deleteAiSession(id),
+      success: '会话已删除',
+      onDone: () => {
+        setActiveId(null);
+        setMessages([]);
+        void refreshSessions();
+      },
+    });
   };
 
   const onSend = async (e: SubmitEvent) => {

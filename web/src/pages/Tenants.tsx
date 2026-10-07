@@ -1,49 +1,64 @@
-import { Show, createSignal } from 'solid-js';
-import { useToast } from '#ui/components';
+import { createEffect, createSignal } from 'solid-js';
 
-import { createTenant, listTenants, toApiError, updateTenant, type TenantItem } from '#ui/api';
-import DataTable, { type Column } from '#ui/components/DataTable';
+import { createTenant, listTenants, updateTenant, type TenantItem } from '#ui/api';
+import {
+  AdminCrudPage,
+  DataTable,
+  FormField,
+  FormModal,
+  useFeedback,
+  type Column,
+} from '#ui/components';
 import { usePaged } from '#ui/hooks/usePaged';
 import { formatDateTime } from '#ui/utils';
 
 const PAGE_SIZE = 20;
 
 function Tenants() {
-  const toast = useToast();
+  const feedback = useFeedback();
+  const [createOpen, setCreateOpen] = createSignal(false);
+  const [name, setName] = createSignal('');
   const [creating, setCreating] = createSignal(false);
-  const [success, setSuccess] = createSignal<string | null>(null);
-  const [nameInput, setNameInput] = createSignal('');
+  const [createError, setCreateError] = createSignal<string | null>(null);
 
-  const paged = usePaged<TenantItem>((page, pageSize) => listTenants(page, pageSize), PAGE_SIZE);
+  const paged = usePaged<TenantItem>((page, pageSize) => listTenants(page, pageSize), { pageSize: PAGE_SIZE });
 
-  const onCreate = async (e: SubmitEvent) => {
-    e.preventDefault();
+  createEffect(() => {
+    if (createOpen()) {
+      setName('');
+      setCreating(false);
+      setCreateError(null);
+    }
+  });
+
+  const onCreate = async () => {
     if (creating()) return;
     setCreating(true);
-    setSuccess(null);
+    setCreateError(null);
     try {
-      await createTenant({ name: nameInput().trim() });
-      setNameInput('');
-      setSuccess('租户已创建');
+      await createTenant({ name: name().trim() });
+      feedback.show('租户已创建', 'success');
+      setCreateOpen(false);
       void paged.reload(1);
     } catch (err) {
-      toast.show(toApiError(err).message, 'error');
+      setCreateError(err instanceof Error ? err.message : '创建失败，请稍后重试');
     } finally {
       setCreating(false);
     }
   };
 
-  const onToggle = async (tenant: TenantItem) => {
-    if (!window.confirm(`确定${tenant.status === 'active' ? '停用' : '启用'}租户「${tenant.name}」吗？`)) return;
-    try {
-      await updateTenant(tenant.id, {
-        status: tenant.status === 'active' ? 'disabled' : 'active',
-      });
-      setSuccess(`租户「${tenant.name}」已${tenant.status === 'active' ? '停用' : '启用'}`);
-      void paged.reload();
-    } catch (err) {
-      toast.show(toApiError(err).message, 'error');
-    }
+  const onToggle = (tenant: TenantItem) => {
+    const disabling = tenant.status === 'active';
+    void feedback.runAction({
+      confirm: {
+        title: disabling ? '停用租户' : '启用租户',
+        message: `确定${disabling ? '停用' : '启用'}租户「${tenant.name}」吗？`,
+        danger: disabling,
+      },
+      action: () => updateTenant(tenant.id, { status: disabling ? 'disabled' : 'active' }),
+      success: `租户「${tenant.name}」已${disabling ? '停用' : '启用'}`,
+      onDone: () => paged.refresh(),
+    });
   };
 
   const columns: Column<TenantItem>[] = [
@@ -66,35 +81,13 @@ function Tenants() {
   ];
 
   return (
-    <div class="space-y-4">
-      <div>
-        <h2 class="text-xl font-semibold">租户管理</h2>
-        <p class="text-sm text-base-content/60">多租户隔离：每个租户拥有独立的用户与数据</p>
-      </div>
-
-      <form onSubmit={onCreate} class="flex items-end gap-2">
-        <label class="form-control w-full max-w-sm">
-          <span class="label-text mb-1">新租户名称</span>
-          <input
-            type="text"
-            class="input input-bordered input-sm"
-            placeholder="例如：Acme Inc"
-            value={nameInput()}
-            onInput={(e) => setNameInput(e.currentTarget.value)}
-            required
-          />
-        </label>
-        <button type="submit" class="btn btn-primary btn-sm" disabled={creating()}>
-          {creating() ? '创建中…' : '创建租户'}
-        </button>
-      </form>
-
-      <Show when={success()}>
-        <div role="alert" class="alert alert-success py-2 text-sm">
-          {success()}
-        </div>
-      </Show>
-
+    <AdminCrudPage
+      title="租户管理"
+      description="多租户隔离：每个租户拥有独立的用户与数据"
+      total={paged.total()}
+      onRefresh={() => void paged.refresh()}
+      onCreate={() => setCreateOpen(true)}
+    >
       <DataTable
         columns={columns}
         rows={paged.items()}
@@ -104,6 +97,8 @@ function Tenants() {
         totalPages={paged.totalPages()}
         loading={paged.loading()}
         error={paged.error()}
+        pageSize={paged.pageSize()}
+        onPageSizeChange={(n) => void paged.changePageSize(n)}
         emptyText="暂无租户"
         onPageChange={(p) => void paged.reload(p)}
         actions={(tenant) => (
@@ -116,7 +111,28 @@ function Tenants() {
           </button>
         )}
       />
-    </div>
+
+      <FormModal
+        open={createOpen()}
+        title="新建租户"
+        error={createError()}
+        submitting={creating()}
+        submitLabel="创建"
+        onSubmit={() => void onCreate()}
+        onClose={() => setCreateOpen(false)}
+      >
+        <FormField label="租户名称" required>
+          <input
+            type="text"
+            class="input input-bordered input-sm w-full"
+            placeholder="例如：Acme Inc"
+            value={name()}
+            onInput={(e) => setName(e.currentTarget.value)}
+            required
+          />
+        </FormField>
+      </FormModal>
+    </AdminCrudPage>
   );
 }
 

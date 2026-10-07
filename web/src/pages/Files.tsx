@@ -1,8 +1,7 @@
-import { Show, createSignal } from 'solid-js';
-import { useToast } from '#ui/components';
+import { createSignal } from 'solid-js';
 
-import { deleteFile, downloadFile, listFiles, toApiError, uploadFile, type FileItem } from '#ui/api';
-import DataTable, { type Column } from '#ui/components/DataTable';
+import { deleteFile, downloadFile, listFiles, uploadFile, type FileItem } from '#ui/api';
+import { AdminCrudPage, DataTable, useFeedback, type Column } from '#ui/components';
 import { usePaged } from '#ui/hooks/usePaged';
 import { formatDateTime } from '#ui/utils';
 
@@ -15,38 +14,39 @@ function formatSize(bytes: number): string {
 }
 
 function Files() {
-  const toast = useToast();
+  const feedback = useFeedback();
   const [uploading, setUploading] = createSignal(false);
-  const [success, setSuccess] = createSignal<string | null>(null);
 
-  const paged = usePaged<FileItem>((page, pageSize) => listFiles(page, pageSize), PAGE_SIZE);
+  const paged = usePaged<FileItem>((page, pageSize) => listFiles(page, pageSize), { pageSize: PAGE_SIZE });
 
   const onUpload = async (e: Event) => {
     const input = e.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
     setUploading(true);
-    setSuccess(null);
     try {
       await uploadFile(file);
-      setSuccess(`「${file.name}」上传成功`);
+      feedback.show(`「${file.name}」上传成功`, 'success');
       input.value = '';
       void paged.reload(1);
     } catch (err) {
-      toast.show(toApiError(err).message, 'error');
+      feedback.show(err instanceof Error ? err.message : '上传失败，请稍后重试', 'error');
     } finally {
       setUploading(false);
     }
   };
 
-  const onDelete = async (file: FileItem) => {
-    if (!window.confirm(`确定删除「${file.name}」吗？此操作不可恢复。`)) return;
-    try {
-      await deleteFile(file.id);
-      void paged.reload();
-    } catch (err) {
-      toast.show(toApiError(err).message, 'error');
-    }
+  const onDownload = (file: FileItem) => {
+    void feedback.runAction({ action: () => downloadFile(file.id, file.name) });
+  };
+
+  const onDelete = (file: FileItem) => {
+    void feedback.runAction({
+      confirm: { title: '删除文件', message: `确定删除「${file.name}」吗？此操作不可恢复。`, danger: true },
+      action: () => deleteFile(file.id),
+      success: '已删除',
+      onDone: () => paged.refresh(),
+    });
   };
 
   const columns: Column<FileItem>[] = [
@@ -62,24 +62,18 @@ function Files() {
   ];
 
   return (
-    <div class="space-y-4">
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-xl font-semibold">文件管理</h2>
-          <p class="text-sm text-base-content/60">共 {paged.total()} 个文件</p>
-        </div>
+    <AdminCrudPage
+      title="文件管理"
+      description="平台内上传的附件与静态文件"
+      total={paged.total()}
+      onRefresh={() => void paged.refresh()}
+      extra={
         <label class="btn btn-primary btn-sm">
           {uploading() ? '上传中…' : '上传文件'}
           <input type="file" class="hidden" disabled={uploading()} onChange={onUpload} />
         </label>
-      </div>
-
-      <Show when={success()}>
-        <div role="alert" class="alert alert-success py-2 text-sm">
-          {success()}
-        </div>
-      </Show>
-
+      }
+    >
       <DataTable
         columns={columns}
         rows={paged.items()}
@@ -89,17 +83,13 @@ function Files() {
         totalPages={paged.totalPages()}
         loading={paged.loading()}
         error={paged.error()}
+        pageSize={paged.pageSize()}
+        onPageSizeChange={(n) => void paged.changePageSize(n)}
         emptyText="暂无文件"
         onPageChange={(p) => void paged.reload(p)}
         actions={(file) => (
           <>
-            <button
-              type="button"
-              class="btn btn-ghost btn-xs"
-              onClick={() => {
-                downloadFile(file.id, file.name).catch((err) => toast.show(toApiError(err).message));
-              }}
-            >
+            <button type="button" class="btn btn-ghost btn-xs" onClick={() => onDownload(file)}>
               下载
             </button>
             <button type="button" class="btn btn-ghost btn-xs text-error" onClick={() => onDelete(file)}>
@@ -108,7 +98,7 @@ function Files() {
           </>
         )}
       />
-    </div>
+    </AdminCrudPage>
   );
 }
 

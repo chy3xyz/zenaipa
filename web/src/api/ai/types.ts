@@ -1,3 +1,5 @@
+import type { PageResult } from '#ui/api/envelope';
+
 export interface AiProviderItem {
   id: number;
   name: string;
@@ -10,12 +12,7 @@ export interface AiProviderItem {
   updated_at: number;
 }
 
-export interface AiProviderListResult {
-  list: AiProviderItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export interface AiProviderListResult extends PageResult<AiProviderItem> {}
 
 export interface AiSessionItem {
   id: number;
@@ -24,12 +21,7 @@ export interface AiSessionItem {
   updated_at: number;
 }
 
-export interface AiSessionListResult {
-  list: AiSessionItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export interface AiSessionListResult extends PageResult<AiSessionItem> {}
 
 export interface AiMessageItem {
   id: number;
@@ -60,12 +52,7 @@ export interface AiApprovalItem {
   created_at: number;
 }
 
-export interface AiApprovalListResult {
-  list: AiApprovalItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export interface AiApprovalListResult extends PageResult<AiApprovalItem> {}
 
 export interface AiRunItem {
   id: number;
@@ -84,12 +71,7 @@ export interface AiRunItem {
   created_at: number;
 }
 
-export interface AiRunListResult {
-  list: AiRunItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export interface AiRunListResult extends PageResult<AiRunItem> {}
 
 export interface AiWorkflowStep {
   name: string;

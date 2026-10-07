@@ -1,3 +1,5 @@
+import type { PageResult } from '#ui/api/envelope';
+
 export interface AuditLogItem {
   id: number;
   actor_user_id: number;
@@ -11,9 +13,4 @@ export interface AuditLogItem {
   created_at: number;
 }
 
-export interface AuditListResult {
-  list: AuditLogItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export interface AuditListResult extends PageResult<AuditLogItem> {}

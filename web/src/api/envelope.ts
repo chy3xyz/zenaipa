@@ -24,3 +24,11 @@ export function unwrapEnvelope<T>(envelope: ApiEnvelope<T>): T {
   }
   return envelope.data;
 }
+
+/** 后端 `sendPaged`(ruoyi 风格)分页负载；域列表类型直接复用。 */
+export interface PageResult<T> {
+  list: T[];
+  total: number;
+  page: number;
+  pageSize?: number;
+}

@@ -1,8 +1,14 @@
-import { createSignal, Show } from 'solid-js';
-import { useToast } from '#ui/components';
+import { createSignal } from 'solid-js';
 
-import { deleteUser, listUsers, revokeUserSessions, toApiError, type AuthUser } from '#ui/api';
-import DataTable, { type Column } from '#ui/components/DataTable';
+import { deleteUser, listUsers, revokeUserSessions, type AuthUser } from '#ui/api';
+import {
+  AdminCrudPage,
+  DataTable,
+  SearchBar,
+  useFeedback,
+  type Column,
+  type SearchValues,
+} from '#ui/components';
 import UserFormModal, { type UserFormTarget } from '#ui/components/UserFormModal';
 import { useAuth } from '#ui/hooks';
 import { usePaged } from '#ui/hooks/usePaged';
@@ -11,21 +17,21 @@ import { formatDateTime } from '#ui/utils';
 const PAGE_SIZE = 20;
 
 function Users() {
-  const toast = useToast();
+  const feedback = useFeedback();
   const [auth] = useAuth();
   const [keyword, setKeyword] = createSignal('');
-  const [searchInput, setSearchInput] = createSignal('');
 
   const [modalOpen, setModalOpen] = createSignal(false);
   const [modalMode, setModalMode] = createSignal<UserFormTarget>('create');
   const [modalUser, setModalUser] = createSignal<AuthUser | null>(null);
 
-  const paged = usePaged<AuthUser>((page, pageSize) => listUsers(page, pageSize, keyword()), PAGE_SIZE);
+  const paged = usePaged<AuthUser>((page, pageSize) => listUsers(page, pageSize, keyword()), {
+    pageSize: PAGE_SIZE,
+    watch: () => keyword(),
+  });
 
-  const onSearch = (e: SubmitEvent) => {
-    e.preventDefault();
-    setKeyword(searchInput());
-    void paged.reload(1);
+  const onSearch = (values: SearchValues) => {
+    setKeyword((values.keyword as string) ?? '');
   };
 
   const openCreate = () => {
@@ -40,24 +46,22 @@ function Users() {
     setModalOpen(true);
   };
 
-  const onRemove = async (user: AuthUser) => {
-    if (!window.confirm(`确定删除用户「${user.name}」吗？此操作不可恢复。`)) return;
-    try {
-      await deleteUser(user.id);
-      void paged.reload();
-    } catch (err) {
-      toast.show(toApiError(err).message, 'error');
-    }
+  const onRemove = (user: AuthUser) => {
+    void feedback.runAction({
+      confirm: { title: '删除用户', message: `确定删除用户「${user.name}」吗？此操作不可恢复。`, danger: true },
+      action: () => deleteUser(user.id),
+      success: '已删除',
+      onDone: () => paged.refresh(),
+    });
   };
 
-  const onRevoke = async (user: AuthUser) => {
-    if (!window.confirm(`确定踢下线「${user.name}」?其所有登录将立即失效`)) return;
-    try {
-      await revokeUserSessions(user.id);
-      toast.show('已踢下线', 'success');
-    } catch (err) {
-      toast.show(toApiError(err).message, 'error');
-    }
+  const onRevoke = (user: AuthUser) => {
+    void feedback.runAction({
+      confirm: { title: '踢下线', message: `确定踢下线「${user.name}」?其所有登录将立即失效` },
+      action: () => revokeUserSessions(user.id),
+      success: '已踢下线',
+      onDone: () => paged.refresh(),
+    });
   };
 
   const columns: Column<AuthUser>[] = [
@@ -95,43 +99,20 @@ function Users() {
   ];
 
   return (
-    <div class="space-y-4">
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-xl font-semibold">用户管理</h2>
-          <p class="text-sm text-base-content/60">共 {paged.total()} 个用户</p>
-        </div>
-        <button type="button" class="btn btn-primary btn-sm" onClick={openCreate}>
-          新建用户
-        </button>
-      </div>
-
-      <form onSubmit={onSearch} class="flex items-center gap-2">
-        <input
-          type="search"
-          class="input input-bordered input-sm w-full max-w-xs"
-          placeholder="搜索姓名或邮箱"
-          value={searchInput()}
-          onInput={(e) => setSearchInput(e.currentTarget.value)}
+    <AdminCrudPage
+      title="用户管理"
+      description="平台用户账号与角色"
+      total={paged.total()}
+      onRefresh={() => void paged.refresh()}
+      onCreate={openCreate}
+      createLabel="新建用户"
+      filter={
+        <SearchBar
+          fields={[{ key: 'keyword', label: '关键词', type: 'text', placeholder: '搜索姓名或邮箱' }]}
+          onSearch={onSearch}
         />
-        <button type="submit" class="btn btn-sm" disabled={paged.loading()}>
-          搜索
-        </button>
-        <Show when={keyword()}>
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm"
-            onClick={() => {
-              setKeyword('');
-              setSearchInput('');
-              void paged.reload(1);
-            }}
-          >
-            清除
-          </button>
-        </Show>
-      </form>
-
+      }
+    >
       <DataTable
         columns={columns}
         rows={paged.items()}
@@ -141,6 +122,8 @@ function Users() {
         totalPages={paged.totalPages()}
         loading={paged.loading()}
         error={paged.error()}
+        pageSize={paged.pageSize()}
+        onPageSizeChange={(n) => void paged.changePageSize(n)}
         emptyText="暂无用户"
         onPageChange={(p) => void paged.reload(p)}
         actions={(user) => (
@@ -164,7 +147,7 @@ function Users() {
             <button
               type="button"
               class="btn btn-ghost btn-xs text-warning"
-              onClick={() => void onRevoke(user)}
+              onClick={() => onRevoke(user)}
               disabled={user.id === auth.user?.id}
             >
               踢下线
@@ -178,9 +161,9 @@ function Users() {
         mode={modalMode()}
         user={modalUser()}
         onClose={() => setModalOpen(false)}
-        onSaved={() => void paged.reload()}
+        onSaved={() => void paged.refresh()}
       />
-    </div>
+    </AdminCrudPage>
   );
 }
 

@@ -1,7 +1,14 @@
-import { createSignal, For, Show } from 'solid-js';
-import { useToast } from '#ui/components';
+import { createSignal } from 'solid-js';
 
-import { listMailTemplates, toApiError, upsertMailTemplate, type MailTemplateItem } from '#ui/api';
+import { listMailTemplates, upsertMailTemplate, type MailTemplateItem } from '#ui/api';
+import {
+  AdminCrudPage,
+  DataTable,
+  FormField,
+  FormModal,
+  useFeedback,
+  type Column,
+} from '#ui/components';
 import { usePaged } from '#ui/hooks/usePaged';
 import { formatDateTime } from '#ui/utils';
 
@@ -13,144 +20,127 @@ const CODE_LABELS: Record<string, string> = {
 };
 
 function MailTemplates() {
-  const toast = useToast();
+  const feedback = useFeedback();
   const [editing, setEditing] = createSignal<MailTemplateItem | null>(null);
   const [subject, setSubject] = createSignal('');
   const [body, setBody] = createSignal('');
   const [saving, setSaving] = createSignal(false);
-  const [saved, setSaved] = createSignal('');
+  const [error, setError] = createSignal<string | null>(null);
 
-  const paged = usePaged<MailTemplateItem>((page, pageSize) => listMailTemplates(page, pageSize), PAGE_SIZE);
+  const paged = usePaged<MailTemplateItem>((page, pageSize) => listMailTemplates(page, pageSize), {
+    pageSize: PAGE_SIZE,
+  });
 
   const openEdit = (item: MailTemplateItem) => {
-    setEditing(item);
     setSubject(item.subject);
     setBody(item.body);
-    setSaved('');
+    setSaving(false);
+    setError(null);
+    setEditing(item);
   };
 
   const onSave = async () => {
     const item = editing();
-    if (!item) return;
+    if (!item || saving()) return;
     if (!subject().trim() || !body().trim()) {
-      toast.show('主题和正文不能为空', 'error');
+      setError('主题和正文不能为空');
       return;
     }
     setSaving(true);
+    setError(null);
     try {
       await upsertMailTemplate(item.code, subject(), body());
-      setSaved('已保存');
-      void paged.reload();
-      window.setTimeout(() => setSaved(''), 2000);
+      feedback.show('模板已保存', 'success');
+      setEditing(null);
+      void paged.refresh();
     } catch (err) {
-      toast.show(toApiError(err).message, 'error');
+      setError(err instanceof Error ? err.message : '保存失败，请稍后重试');
     } finally {
       setSaving(false);
     }
   };
 
+  const columns: Column<MailTemplateItem>[] = [
+    {
+      key: 'code',
+      title: '模板',
+      render: (item) => (
+        <span>
+          <span class="badge badge-ghost">{CODE_LABELS[item.code] ?? item.code}</span>
+          <span class="ml-1 font-mono text-xs text-base-content/50">{item.code}</span>
+        </span>
+      ),
+    },
+    { key: 'subject', title: '主题', render: (item) => <span class="max-w-xs truncate text-sm">{item.subject}</span> },
+    {
+      key: 'body',
+      title: '正文',
+      render: (item) => <span class="max-w-md truncate text-sm text-base-content/70">{item.body}</span>,
+    },
+    {
+      key: 'updated_at',
+      title: '更新时间',
+      render: (item) => <span class="text-sm text-base-content/70">{formatDateTime(item.updated_at)}</span>,
+    },
+  ];
+
   return (
-    <div class="space-y-4">
-      <div>
-        <h2 class="text-xl font-semibold">邮件模板</h2>
-        <p class="text-sm text-base-content/60">
-          未配置的模板使用内置默认值;支持变量 <code class="font-mono text-xs">{'{app_name}'}</code>{' '}
-          <code class="font-mono text-xs">{'{link}'}</code> <code class="font-mono text-xs">{'{email}'}</code>
-        </p>
-      </div>
-
-      <div class="overflow-x-auto rounded-lg border border-base-300">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>模板</th>
-              <th>主题</th>
-              <th>正文</th>
-              <th>更新时间</th>
-              <th class="text-right">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <For each={paged.items()}>
-              {(item) => (
-                <tr>
-                  <td>
-                    <span class="badge badge-ghost">{CODE_LABELS[item.code] ?? item.code}</span>
-                    <span class="ml-1 font-mono text-xs text-base-content/50">{item.code}</span>
-                  </td>
-                  <td class="max-w-xs truncate text-sm">{item.subject}</td>
-                  <td class="max-w-md truncate text-sm text-base-content/70">{item.body}</td>
-                  <td class="text-sm text-base-content/70">{formatDateTime(item.updated_at)}</td>
-                  <td class="text-right">
-                    <button type="button" class="btn btn-sm btn-outline" onClick={() => openEdit(item)}>
-                      编辑
-                    </button>
-                  </td>
-                </tr>
-              )}
-            </For>
-            <Show when={paged.items().length === 0 && !paged.loading()}>
-              <tr>
-                <td colspan={5} class="py-10 text-center text-base-content/50">
-                  暂无模板
-                </td>
-              </tr>
-            </Show>
-          </tbody>
-        </table>
-      </div>
-
-      <Show when={editing()}>
-        {(item) => (
-          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div class="w-full max-w-lg rounded-lg border border-base-300 bg-base-100 p-5 shadow-xl">
-              <div class="mb-4 flex items-center justify-between">
-                <div>
-                  <h3 class="text-lg font-semibold">编辑模板</h3>
-                  <p class="font-mono text-xs text-base-content/50">{item().code}</p>
-                </div>
-                <button
-                  type="button"
-                  class="btn btn-ghost btn-sm"
-                  onClick={() => setEditing(null)}
-                  aria-label="关闭"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <label class="block text-sm font-medium text-base-content/70">主题</label>
-              <input
-                type="text"
-                class="input input-bordered input-sm mt-1 w-full"
-                value={subject()}
-                onInput={(e) => setSubject(e.currentTarget.value)}
-              />
-
-              <label class="mt-4 block text-sm font-medium text-base-content/70">正文</label>
-              <textarea
-                class="textarea textarea-bordered textarea-sm mt-1 w-full font-mono text-sm"
-                rows={8}
-                value={body()}
-                onInput={(e) => setBody(e.currentTarget.value)}
-              />
-
-              <div class="mt-4 flex items-center justify-end gap-2">
-                <Show when={saved()}>
-                  <span class="text-sm text-success">{saved()}</span>
-                </Show>
-                <button type="button" class="btn btn-ghost btn-sm" onClick={() => setEditing(null)}>
-                  取消
-                </button>
-                <button type="button" class="btn btn-primary btn-sm" disabled={saving()} onClick={() => void onSave()}>
-                  {saving() ? '保存中…' : '保存'}
-                </button>
-              </div>
-            </div>
-          </div>
+    <AdminCrudPage
+      title="邮件模板"
+      description="未配置的模板使用内置默认值；支持变量 {app_name} {link} {email}"
+      total={paged.total()}
+      onRefresh={() => void paged.refresh()}
+    >
+      <DataTable
+        columns={columns}
+        rows={paged.items()}
+        rowKey={(item) => item.code}
+        total={paged.total()}
+        page={paged.page()}
+        totalPages={paged.totalPages()}
+        loading={paged.loading()}
+        error={paged.error()}
+        pageSize={paged.pageSize()}
+        onPageSizeChange={(n) => void paged.changePageSize(n)}
+        emptyText="暂无模板"
+        onPageChange={(p) => void paged.reload(p)}
+        actions={(item) => (
+          <button type="button" class="btn btn-outline btn-xs" onClick={() => openEdit(item)}>
+            编辑
+          </button>
         )}
-      </Show>
-    </div>
+      />
+
+      <FormModal
+        open={editing() !== null}
+        title="编辑模板"
+        description={editing()?.code}
+        error={error()}
+        submitting={saving()}
+        submitLabel="保存"
+        onSubmit={() => void onSave()}
+        onClose={() => setEditing(null)}
+      >
+        <FormField label="主题" required>
+          <input
+            type="text"
+            class="input input-bordered input-sm w-full"
+            value={subject()}
+            onInput={(e) => setSubject(e.currentTarget.value)}
+            required
+          />
+        </FormField>
+        <FormField label="正文" required>
+          <textarea
+            class="textarea textarea-bordered textarea-sm w-full font-mono text-sm"
+            rows={8}
+            value={body()}
+            onInput={(e) => setBody(e.currentTarget.value)}
+            required
+          />
+        </FormField>
+      </FormModal>
+    </AdminCrudPage>
   );
 }
 

@@ -5,7 +5,7 @@ function env(key: string, fallback = ''): string {
 }
 
 export const APP_CONFIG = {
-  /** zenaipa backend origin, e.g. http://127.0.0.1:8600 */
+  /** zenaipa backend origin；开发态留空走 rsbuild 代理(dev 3001 → 8000)，生产填完整 origin */
   apiBaseUrl: env('PUBLIC_API_BASE_URL', ''),
   /** API path prefix registered by the Zig backend */
   apiPrefix: env('PUBLIC_API_PREFIX', '/api/v1'),

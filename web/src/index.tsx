@@ -21,7 +21,7 @@ import { ROUTE_PATH } from '#ui/constants';
 import { useAuth } from '#ui/hooks';
 import { AuthLayout, MainLayout } from '#ui/layouts';
 import { AuthProvider } from '#ui/providers';
-import { ToastProvider } from '#ui/components';
+import { FeedbackProvider } from '#ui/components';
 
 const SignIn = lazy(() => import('#ui/pages/SignIn'));
 const SignUp = lazy(() => import('#ui/pages/SignUp'));
@@ -92,7 +92,7 @@ function Root(props: { children?: JSX.Element }) {
 
   return (
     <AuthProvider>
-      <ToastProvider>
+      <FeedbackProvider>
         <ErrorBoundary
         fallback={(err, reset) => (
           <div class="flex min-h-screen flex-col items-center justify-center gap-4 p-6">
@@ -108,7 +108,7 @@ function Root(props: { children?: JSX.Element }) {
       >
         <Suspense fallback={<BootFallback />}>{props.children}</Suspense>
         </ErrorBoundary>
-      </ToastProvider>
+      </FeedbackProvider>
     </AuthProvider>
   );
 }

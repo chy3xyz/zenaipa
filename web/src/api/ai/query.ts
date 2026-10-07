@@ -1,5 +1,4 @@
-import { http } from '#ui/api/client';
-import { unwrapEnvelope } from '#ui/api/envelope';
+import { deleteEnvelope, getEnvelope, postEnvelope, putEnvelope } from '#ui/api/client';
 
 import {
   AI_PATH,
@@ -24,16 +23,6 @@ import type {
   AiWorkflowResult,
 } from './types';
 
-async function getEnvelope<T>(path: string): Promise<T> {
-  const { data } = await http.get<{ code: number; msg: string; data: T }>(path);
-  return unwrapEnvelope(data);
-}
-
-async function postEnvelope<T>(path: string, body?: unknown): Promise<T> {
-  const { data } = await http.post<{ code: number; msg: string; data: T }>(path, body ?? {});
-  return unwrapEnvelope(data);
-}
-
 export async function listAiSessions(page: number, pageSize: number): Promise<AiSessionListResult> {
   return getEnvelope<AiSessionListResult>(aiSessionsQuery(page, pageSize));
 }
@@ -51,7 +40,7 @@ export async function chatAi(sessionId: number, content: string): Promise<AiChat
 }
 
 export async function deleteAiSession(sessionId: number): Promise<void> {
-  await http.delete(aiSessionDetail(sessionId));
+  await deleteEnvelope<null>(aiSessionDetail(sessionId));
 }
 
 export async function listAiProviders(page: number, pageSize: number): Promise<AiProviderListResult> {
@@ -80,8 +69,7 @@ export async function updateAiProvider(
     enabled: boolean;
   }>,
 ): Promise<void> {
-  const { data } = await http.put<{ code: number; msg: string; data: null }>(aiProviderDetail(id), body);
-  unwrapEnvelope(data);
+  await putEnvelope<null>(aiProviderDetail(id), body);
 }
 
 export async function checkAiProvider(id: number): Promise<{ status: string }> {
@@ -89,7 +77,7 @@ export async function checkAiProvider(id: number): Promise<{ status: string }> {
 }
 
 export async function deleteAiProvider(id: number): Promise<void> {
-  await http.delete(aiProviderDetail(id));
+  await deleteEnvelope<null>(aiProviderDetail(id));
 }
 
 export async function listAiApprovals(page: number, pageSize: number, status?: string): Promise<AiApprovalListResult> {

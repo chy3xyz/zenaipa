@@ -1,3 +1,5 @@
+import type { PageResult } from '#ui/api/envelope';
+
 export type TaskStatus = 'pending' | 'claimed' | 'done' | 'failed' | 'canceled';
 
 export interface TaskItem {
@@ -15,12 +17,7 @@ export interface TaskItem {
   updated_at: number;
 }
 
-export interface TaskListResult {
-  list: TaskItem[];
-  total: number;
-  page: number;
-  pageSize: number;
-}
+export interface TaskListResult extends PageResult<TaskItem> {}
 
 export interface TaskStats {
   pending: number;

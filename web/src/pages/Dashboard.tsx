@@ -1,19 +1,8 @@
 import { createSignal, For, onMount, Show } from 'solid-js';
 
 import { getDashboard, toApiError, type DashboardData } from '#ui/api';
+import { StatCard } from '#ui/components';
 import { formatDateTime } from '#ui/utils';
-
-function StatCard(props: { label: string; value: number; hint?: string }) {
-  return (
-    <div class="rounded-lg border border-base-300 bg-base-200/60 p-4">
-      <p class="text-sm text-base-content/60">{props.label}</p>
-      <p class="mt-1 text-2xl font-bold">{props.value}</p>
-      <Show when={props.hint}>
-        <p class="mt-0.5 text-xs text-base-content/40">{props.hint}</p>
-      </Show>
-    </div>
-  );
-}
 
 function Dashboard() {
   const [data, setData] = createSignal<DashboardData | null>(null);

@@ -1,13 +1,8 @@
-import { http } from '#ui/api/client';
+import { deleteEnvelope, getEnvelope, http } from '#ui/api/client';
 import { unwrapEnvelope } from '#ui/api/envelope';
 
 import { FILE_PATH, fileDetail, fileListQuery } from './path';
 import type { FileItem, FileListResult } from './types';
-
-async function getEnvelope<T>(path: string): Promise<T> {
-  const { data } = await http.get<{ code: number; msg: string; data: T }>(path);
-  return unwrapEnvelope(data);
-}
 
 export async function listFiles(page: number, pageSize: number): Promise<FileListResult> {
   return getEnvelope<FileListResult>(fileListQuery(page, pageSize));
@@ -25,7 +20,7 @@ export async function uploadFile(file: File): Promise<FileItem> {
 }
 
 export async function deleteFile(id: number): Promise<void> {
-  await http.delete(fileDetail(id));
+  await deleteEnvelope<null>(fileDetail(id));
 }
 
 /** Authenticated download via fetch (Authorization header + blob). */
