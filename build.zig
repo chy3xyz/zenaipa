@@ -28,7 +28,7 @@ pub fn build(b: *std.Build) void {
 
     // 构建期版本号注入(运行时 /system/info 与日志使用)。与 CHANGELOG 同步 bump;
     // CI 发版可 -Drelease=x.y.z 覆盖。
-    const version = b.option([]const u8, "release", "Version string embedded in /system/info") orelse "0.2.3";
+    const version = b.option([]const u8, "release", "Version string embedded in /system/info") orelse "0.3.0";
     const build_info = b.addOptions();
     build_info.addOption([]const u8, "version", version);
 

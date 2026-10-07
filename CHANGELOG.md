@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-07
+
 ### Web 控制台（对齐 zweq UI 实践）
 
 - **修复：表格页不再"打开即空"**。`usePaged` 原本不自动加载，6 个表格页挂载后
