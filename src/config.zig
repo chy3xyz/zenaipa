@@ -54,6 +54,12 @@ pub const Config = struct {
     ai_daily_run_limit: i64 = 100,
     /// 审计日志保留天数;超出部分由每日定时任务清理。
     audit_retention_days: i64 = 180,
+    /// 并发连接上限(accept 背压:超限即时 503,防 fd/内存耗尽)。
+    http_max_connections: usize = 1024,
+    /// 请求超时(毫秒,0 = 不限制):排空在途请求的兜底上限。
+    http_request_timeout_ms: u32 = 30000,
+    /// 运行环境标识(ZENAIPA_ENV=development|production)。
+    env: []const u8 = "development",
 
     pub fn fromEnv(environ: *const std.process.Environ.Map) Config {
         var cfg: Config = .{};
@@ -85,7 +91,16 @@ pub const Config = struct {
         cfg.ai_daily_run_limit = parseInt64(environ.get("ZENAIPA_AI_DAILY_RUN_LIMIT") orelse "100", 100);
         cfg.metrics_allow_ips = environ.get("ZENAIPA_METRICS_ALLOW_IPS") orelse "";
         cfg.audit_retention_days = parseInt64(environ.get("ZENAIPA_AUDIT_RETENTION_DAYS") orelse "180", 180);
+        cfg.http_max_connections = parseIntUsize(environ.get("ZENAIPA_HTTP_MAX_CONNECTIONS") orelse "1024", 1024);
+        cfg.http_request_timeout_ms = @intCast(parseIntUsize(environ.get("ZENAIPA_HTTP_REQUEST_TIMEOUT_MS") orelse "30000", 30000));
+        cfg.env = environ.get("ZENAIPA_ENV") orelse "development";
         return cfg;
+    }
+
+    /// 生产判定:显式 production,或任何"类生产"后端(postgres)。用于启动
+    /// 预检 fail-closed——默认密钥/默认 CORS 在生产形态下拒绝启动而非降级。
+    pub fn isProdLike(self: *const Config) bool {
+        return std.mem.eql(u8, self.env, "production") or std.mem.eql(u8, self.db_driver, "postgres");
     }
 };
 

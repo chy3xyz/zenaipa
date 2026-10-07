@@ -14,6 +14,8 @@
 
 const std = @import("std");
 const zigmodu = @import("zigmodu");
+const zent = @import("zent");
+const build_info = @import("build_info");
 const config_mod = @import("config.zig");
 const db_mod = @import("db.zig");
 const schema = @import("schema.zig");
@@ -60,20 +62,28 @@ const CleanupCtx = struct {
 fn jobTokensCleanup(ctx: ?*anyopaque) void {
     const c: *CleanupCtx = @ptrCast(@alignCast(ctx orelse return));
     const now = zigmodu.time.wallClockSeconds(c.io);
-    _ = c.user_store.purgeExpiredPasswordTokens(now, c.password_token_max_age) catch {};
-    _ = c.user_store.purgeExpiredEmailVerifications(now, c.verification_token_max_age) catch {};
+    _ = c.user_store.purgeExpiredPasswordTokens(now, c.password_token_max_age) catch |err| {
+        std.log.err("[cleanup] tokens.cleanup 清理过期密码重置令牌失败: {s}", .{@errorName(err)});
+    };
+    _ = c.user_store.purgeExpiredEmailVerifications(now, c.verification_token_max_age) catch |err| {
+        std.log.err("[cleanup] tokens.cleanup 清理过期邮箱验证令牌失败: {s}", .{@errorName(err)});
+    };
 }
 
 fn jobNotifyPrune(ctx: ?*anyopaque) void {
     const c: *CleanupCtx = @ptrCast(@alignCast(ctx orelse return));
     const now = zigmodu.time.wallClockSeconds(c.io);
-    _ = c.notify_store.purgeOlderThan(now, c.notification_max_age) catch {};
+    _ = c.notify_store.purgeOlderThan(now, c.notification_max_age) catch |err| {
+        std.log.err("[cleanup] notify.prune 清理过期通知失败: {s}", .{@errorName(err)});
+    };
 }
 
 fn jobAuditPrune(ctx: ?*anyopaque) void {
     const c: *CleanupCtx = @ptrCast(@alignCast(ctx orelse return));
     const now = zigmodu.time.wallClockSeconds(c.io);
-    _ = c.audit_store.purgeOlderThan(now, c.audit_retention_seconds) catch {};
+    _ = c.audit_store.purgeOlderThan(now, c.audit_retention_seconds) catch |err| {
+        std.log.err("[cleanup] audit.prune 清理过期审计日志失败: {s}", .{@errorName(err)});
+    };
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -81,12 +91,39 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     const cfg = config_mod.Config.fromEnv(init.environ_map);
-    // 生产(PostgreSQL)必须显式设置 JWT 密钥,拒绝使用默认值。
-    if (!cfg.jwt_secret_explicit and std.mem.eql(u8, cfg.db_driver, "postgres")) {
-        std.log.err("ZENAIPA_JWT_SECRET must be set explicitly in production (PostgreSQL). Refusing to start with the default dev secret.", .{});
-        return error.MissingJwtSecret;
+    // 生产形态(postgres / ZENAIPA_ENV=production)启动预检 fail-closed:
+    // 默认 JWT 密钥 = 完全认证绕过;默认 CORS "*" 暴露全接口。拒绝启动而非降级。
+    if (cfg.isProdLike()) {
+        var env_ctx = zigmodu.Preflight.EnvCheck.fromMap(init.environ_map, &.{"ZENAIPA_JWT_SECRET"});
+        var secret_ctx = zigmodu.Preflight.SecretCheck{ .secret = cfg.jwt_secret, .min_len = 16 };
+        var report = zigmodu.Preflight.run(allocator, &.{
+            zigmodu.Preflight.envCheck(&env_ctx),
+            zigmodu.Preflight.secretCheck(&secret_ctx),
+        });
+        defer report.deinit();
+        report.log();
+        if (!report.ok() or !cfg.jwt_secret_explicit) {
+            std.log.err("ZENAIPA_JWT_SECRET must be set explicitly (>=16 chars, non-placeholder) in production. Refusing to start.", .{});
+            return error.PreflightFailed;
+        }
+        if (std.mem.eql(u8, cfg.cors_origins, "*")) {
+            std.log.err("ZENAIPA_CORS_ORIGINS=* is not allowed in production. Set an explicit origin allow-list.", .{});
+            return error.PreflightFailed;
+        }
     }
-    std.log.info("zenaipa starting (db={s}, port={d})", .{ cfg.db_driver, cfg.http_port });
+    std.log.info("zenaipa starting (db={s}, port={d}, env={s})", .{ cfg.db_driver, cfg.http_port, cfg.env });
+
+    // zent 库级诊断(扫描/迁移/连接池的内部 err/warn)接入 std.log,不再静默。
+    zent.runtime.log.setSink(struct {
+        fn sink(level: zent.runtime.log.Level, message: []const u8) void {
+            switch (level) {
+                .err => std.log.err("[zent] {s}", .{message}),
+                .warn => std.log.warn("[zent] {s}", .{message}),
+                .info => std.log.info("[zent] {s}", .{message}),
+                .debug => std.log.debug("[zent] {s}", .{message}),
+            }
+        }
+    }.sink);
 
     // ── Data store: zent driver + schema-as-code migration ──
     const kind: db_mod.DriverKind = if (std.mem.eql(u8, cfg.db_driver, "postgres")) .postgres else .sqlite;
@@ -126,7 +163,7 @@ pub fn main(init: std.process.Init) !void {
         cfg.mail_console,
     );
     defer mailer.deinit();
-    var cache = cache_svc.CacheService.init(allocator, cfg.cache_max_entries, cfg.cache_ttl_seconds);
+    var cache = cache_svc.CacheService.init(allocator, io, cfg.cache_max_entries, cfg.cache_ttl_seconds);
     defer cache.deinit();
 
     var user_svc = user.service.UserService.init(
@@ -266,6 +303,10 @@ pub fn main(init: std.process.Init) !void {
         .port = cfg.http_port,
         .name = "zenaipa",
         .max_body_size = cfg.upload_max_bytes + 64 * 1024,
+        // accept 背压:超限即时 503(防 accept 洪泛耗尽 fd/内存),请求带超时兜底。
+        .max_connections = cfg.http_max_connections,
+        .over_limit_response = .unavailable,
+        .request_timeout_ms = cfg.http_request_timeout_ms,
     });
     defer server.deinit();
 
@@ -277,9 +318,9 @@ pub fn main(init: std.process.Init) !void {
     var metrics = metrics_mod.Metrics.init(io);
     try server.addMiddleware(zigmodu.http.tracingMiddleware());
     try server.addMiddleware(metrics.middleware());
-    try server.addMiddleware(sec_headers.securityHeaders());
+    try server.addMiddleware(try sec_headers.securityHeaders());
     try server.addMiddleware(access_log.middleware());
-    try server.addMiddleware(zigmodu.http.http_middleware.cors(.{ .allow_origins = origins }));
+    try server.addMiddleware(try zigmodu.http.http_middleware.cors(.{ .allow_origins = origins }));
 
     var v1 = server.group("/api/v1");
     try auth_api.registerRoutes(&v1);
@@ -326,7 +367,8 @@ pub fn main(init: std.process.Init) !void {
                     try ctx.sendErrorResponse(503, 503, "数据库不可用");
                     return;
                 };
-                defer probe.free(ctx.allocator);
+                // 行由 store 的分配器产出,由所有者释放(而非 ctx.allocator)。
+                Ready.user_store_ref.freeList(&probe);
                 try ctx.json(200, "{\"code\":0,\"msg\":\"ok\",\"data\":{\"status\":\"READY\"}}");
             }
         }.handle,
@@ -335,9 +377,11 @@ pub fn main(init: std.process.Init) !void {
     const MetricsRoute = struct {
         var metrics_ref: *metrics_mod.Metrics = undefined;
         var allow_ips: []const u8 = "";
+        var dispatcher_ref: *task.service.Dispatcher = undefined;
     };
     MetricsRoute.metrics_ref = &metrics;
     MetricsRoute.allow_ips = cfg.metrics_allow_ips;
+    MetricsRoute.dispatcher_ref = &dispatcher;
     try server.addRoute(.{
         .method = .GET,
         .path = "metrics",
@@ -361,7 +405,20 @@ pub fn main(init: std.process.Init) !void {
                 }
                 const body = try MetricsRoute.metrics_ref.renderPrometheus(ctx.allocator, zigmodu.time.wallClockSeconds(ctx.io orelse return error.InternalError));
                 defer ctx.allocator.free(body);
-                try ctx.text(200, body);
+                // Dispatcher 计数导出(此前仅内部自增,从未对外可见)。
+                const full = try std.fmt.allocPrint(ctx.allocator, "{s}" ++
+                    "# HELP zenaipa_task_processed_total Background tasks completed by the dispatcher.\n" ++
+                    "# TYPE zenaipa_task_processed_total counter\n" ++
+                    "zenaipa_task_processed_total {d}\n" ++
+                    "# HELP zenaipa_task_failed_total Background tasks that ended failed.\n" ++
+                    "# TYPE zenaipa_task_failed_total counter\n" ++
+                    "zenaipa_task_failed_total {d}\n", .{
+                    body,
+                    MetricsRoute.dispatcher_ref.processed.load(.monotonic),
+                    MetricsRoute.dispatcher_ref.failed.load(.monotonic),
+                });
+                defer ctx.allocator.free(full);
+                try ctx.text(200, full);
             }
         }.handle,
     });
@@ -383,7 +440,10 @@ pub fn main(init: std.process.Init) !void {
         }
     };
     const server_handle = try std.Thread.spawn(.{ .stack_size = 4 * 1024 * 1024 }, ServerThread.run, .{&server});
-    defer server_handle.join();
+    // 单次 join:显式 join 后置位,defer 只兜错误路径(双重 join 已 join 的
+    // pthread 会 ESRCH → panic,zweq 86bc01e 同修法)。
+    var server_joined = false;
+    defer if (!server_joined) server_handle.join();
 
     const poll = std.posix.timespec{ .sec = 0, .nsec = 100 * std.time.ns_per_ms };
     while (!ShutdownFlag.requested.load(.acquire)) {
@@ -392,7 +452,8 @@ pub fn main(init: std.process.Init) !void {
     std.log.info("shutdown signal received, draining in-flight requests...", .{});
     server.stop();
     server_handle.join();
-    std.log.info("server stopped gracefully", .{});
+    server_joined = true;
+    std.log.info("server stopped gracefully (zenaipa {s})", .{build_info.version});
 }
 
 /// Parse `ZENAIPA_CORS_ORIGINS` ("*" or a comma-separated allow-list) into

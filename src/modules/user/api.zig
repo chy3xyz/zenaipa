@@ -186,7 +186,7 @@ pub fn UserApi(comptime Service: type) type {
                 try sendCreateError(ctx, err);
                 return;
             };
-            defer session.deinit(self.svc.store.allocator);
+            defer self.svc.freeSession(&session);
 
             var detail_buf: [160]u8 = undefined;
             const detail = try std.fmt.bufPrint(&detail_buf, "创建用户 {s} ({s})", .{ req.name, req.email });

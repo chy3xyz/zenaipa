@@ -19,6 +19,11 @@ const ai = @import("modules/ai/root.zig");
 const cache_svc = @import("services/cache.zig");
 const mail = @import("services/mail.zig");
 
+// 独立单测模块(无 DB 依赖)挂进测试根,使其 test 块被编译执行。
+comptime {
+    _ = @import("http/url_guard.zig");
+}
+
 /// In-memory SQLite store with every schema group migrated.
 fn openMemory(allocator: std.mem.Allocator) !db_mod.StoreEnv(schema.infos, .{
     tenant.persistence.infos,
@@ -197,15 +202,18 @@ test "changePassword verifies the current password" {
     var store = user.persistence.UserStore.init(allocator, env.client);
     var sec = zigmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
     var svc = user.service.UserService.init(&store, &sec, std.testing.io, 3600, 86400);
-    const id = try store.createUser("Alice", "alice@example.com", "hash", false, false, 1, 100);
+    // 存量口令必须是真实可解码的 hash,"口令不对"才会走 InvalidCredentials。
+    const stored = try sec.module.hashPassword("current-password-1");
+    defer sec.module.allocator.free(stored);
+    const id = try store.createUser("Alice", "alice@example.com", stored, false, false, 1, 100);
 
     try std.testing.expectError(error.InvalidCredentials, svc.changePassword(id, "wrong", "newpassword123"));
-    try std.testing.expectError(error.InvalidPassword, svc.changePassword(id, "hash", "short"));
+    try std.testing.expectError(error.InvalidPassword, svc.changePassword(id, "current-password-1", "short"));
 }
 
 test "cache service set/get/remove" {
     const allocator = std.testing.allocator;
-    var cache = cache_svc.CacheService.init(allocator, 16, 60);
+    var cache = cache_svc.CacheService.init(allocator, std.testing.io, 16, 60);
     defer cache.deinit();
     try cache.set("user:1", "{\"name\":\"Alice\"}");
     try std.testing.expectEqualStrings("{\"name\":\"Alice\"}", cache.get("user:1").?);
@@ -232,7 +240,7 @@ test "task queue: enqueue -> claim -> done" {
     defer claimed.free(allocator);
     try std.testing.expectEqual(id, claimed.id);
     try std.testing.expectEqualStrings("claimed", claimed.status);
-    try task_store.markDone(id, 1001);
+    _ = try task_store.markDone(id, 1001);
     const row = (try task_store.getTaskById(id)).?;
     defer row.free(allocator);
     try std.testing.expectEqualStrings("done", row.status);
@@ -244,14 +252,25 @@ test "task queue: retry backoff and failure budget" {
     defer env.deinit();
     var task_store = task.persistence.TaskStore.init(allocator, env.client);
 
-    const id = try task_store.createTask("mail.send", "{}", "pending", 1, 1, 2, "", 0, 100);
-    try task_store.markFailedOrRetry(id, 1, 2, "boom", 200, 60);
+    // 状态机前提:markFailedOrRetry 只吃 claimed 行(条件 UPDATE 守卫),
+    // 所以先走真实 claim 流程再模拟失败。
+    const id = try task_store.createTask("mail.send", "{}", "pending", 1, 0, 2, "", 0, 100);
+    var claimed = (try task_store.claimNext(150)).?;
+    defer claimed.free(allocator);
+    try std.testing.expectEqual(@as(i64, 1), claimed.attempts);
+
+    // claimed → pending,退避 60s。
+    _ = try task_store.markFailedOrRetry(id, claimed.attempts, claimed.max_attempts, "boom", 200, 60);
     const after = (try task_store.getTaskById(id)).?;
     defer after.free(allocator);
     try std.testing.expectEqualStrings("pending", after.status);
     try std.testing.expectEqual(@as(i64, 260), after.available_at);
 
-    try task_store.markFailedOrRetry(id, 2, 2, "boom", 300, 60);
+    // 再次 claim,预算(attempts=2/max=2)耗尽 → failed。
+    var reclaimed = (try task_store.claimNext(300)).?;
+    defer reclaimed.free(allocator);
+    try std.testing.expectEqual(@as(i64, 2), reclaimed.attempts);
+    _ = try task_store.markFailedOrRetry(id, reclaimed.attempts, reclaimed.max_attempts, "boom", 300, 60);
     const failed = (try task_store.getTaskById(id)).?;
     defer failed.free(allocator);
     try std.testing.expectEqualStrings("failed", failed.status);
@@ -431,7 +450,7 @@ test "register binds tenant and JWT aud carries it" {
     var svc = user.service.UserService.init(&store, &sec, std.testing.io, 3600, 86400);
 
     var session = try svc.register(allocator, "Alice", "alice@example.com", "password123", false, 7);
-    defer session.deinit(allocator);
+    defer svc.freeSession(&session);
     try std.testing.expectEqual(@as(i64, 7), session.row.tenant_id);
 
     const payload = try sec.module.verifyToken(session.token);

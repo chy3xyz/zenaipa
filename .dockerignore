@@ -1,0 +1,15 @@
+# 构建上下文裁剪:依赖缓存/产物/本地数据不进 Docker build(zweq 同款基线)。
+.zig-cache/
+.zig-cache-global/
+.zig-global-cache/
+zig-out/
+zig-pkg/
+web/node_modules/
+web/dist/
+uploads/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+_ref/
+.gitleaksignore

@@ -15,23 +15,30 @@ pub const CreateError = error{
     Unexpected,
 };
 
-pub const LoginError = error{InvalidCredentials};
+pub const LoginError = error{ InvalidCredentials, OutOfMemory, MalformedStoredHash };
 
 pub const ResetTokenError = error{
     InvalidToken,
     TokenExpired,
     InvalidPassword,
+    Unexpected,
+    OutOfMemory,
+    MalformedStoredHash,
 };
 
 pub const VerificationError = error{
     InvalidToken,
     TokenExpired,
+    OutOfMemory,
+    MalformedStoredHash,
 };
 
 pub const ChangePasswordError = error{
     InvalidCredentials,
     InvalidPassword,
     TokenInvalidationFailed,
+    OutOfMemory,
+    MalformedStoredHash,
 };
 
 /// Raw reset token plus the owning user id (for the reset link).
@@ -47,15 +54,32 @@ pub const VerificationInfo = struct {
 };
 
 /// A signed-in identity: user row plus a fresh JWT.
+///
+/// 释放统一走 `UserService.freeSession`:行由 store 的分配器产出、token 由
+/// security module 产出,各归各的所有者(混用请求侧分配器会在请求 arena
+/// 语义下变成静默泄漏 —— 冒烟关机门禁实测抓到过)。
 pub const Session = struct {
     row: UserRow,
     token: []const u8,
-
-    pub fn deinit(self: Session, allocator: std.mem.Allocator) void {
-        allocator.free(self.token);
-        self.row.free(allocator);
-    }
 };
+
+/// zigmodu 0.33.4 起 `verifyPassword` 返回错误联合：`OutOfMemory` 与
+/// `MalformedStoredHash` 都是"我们这侧出错"，必须上抛让 API 层答 500，不能
+/// 折成"口令不匹配"（401）——那会让失败登录计数说谎（上游的 Breaking 口径）。
+/// 返回 false 才是"口令确实不对"，由调用点映射成本地 invalid 错误。
+fn verifyPasswordChecked(
+    sec: *zigmodu.security.AppSecurity,
+    input: []const u8,
+    stored: []const u8,
+) error{ OutOfMemory, MalformedStoredHash }!bool {
+    return sec.module.verifyPassword(input, stored) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.MalformedStoredHash => {
+            std.log.err("[user] stored password/token hash not decodable (data corruption)", .{});
+            return error.MalformedStoredHash;
+        },
+    };
+}
 
 pub const UserService = struct {
     store: *persist.UserStore,
@@ -108,7 +132,9 @@ pub const UserService = struct {
         const norm_email = normalizeEmail(allocator, email) catch return error.InvalidEmail;
         defer allocator.free(norm_email);
 
-        if (self.store.getUserByEmail(norm_email) catch return error.EmailTaken) |existing| {
+        // DB 错误不能折成 409"邮箱已被注册"(那会让 DB 故障看起来像冲突)。
+        const existing_opt = self.store.getUserByEmail(norm_email) catch return error.Unexpected;
+        if (existing_opt) |existing| {
             existing.free(self.store.allocator);
             return error.EmailTaken;
         }
@@ -120,7 +146,8 @@ pub const UserService = struct {
         // A prior `getUserByEmail` guard makes a create failure most likely
         // a unique-constraint race; re-check before blaming the DB.
         _ = self.store.createUser(trimmed_name, norm_email, hash, false, admin, tenant_id, now) catch {
-            if (self.store.getUserByEmail(norm_email) catch null) |existing| {
+            const raced_opt = self.store.getUserByEmail(norm_email) catch return error.Unexpected;
+            if (raced_opt) |existing| {
                 existing.free(self.store.allocator);
                 return error.EmailTaken;
             }
@@ -141,9 +168,9 @@ pub const UserService = struct {
 
         const hash_opt = self.store.getPasswordHashById(row.id) catch return error.InvalidCredentials;
         const hash = hash_opt orelse return null;
-        defer allocator.free(hash);
+        defer self.store.allocator.free(hash);
 
-        if (!self.sec.module.verifyPassword(password, hash)) return null;
+        if (!try verifyPasswordChecked(self.sec, password, hash)) return null;
         return self.issueSession(allocator, row.email, row.admin, row.tenant_id) catch return error.InvalidCredentials;
     }
 
@@ -164,6 +191,12 @@ pub const UserService = struct {
 
     pub fn getUserById(self: *UserService, id: i64) !?UserRow {
         return try self.store.getUserById(id);
+    }
+
+    /// 释放一个 Session:token 与 row 各自用其生产者的分配器释放(见 Session 注释)。
+    pub fn freeSession(self: *UserService, s: *Session) void {
+        self.sec.module.allocator.free(s.token);
+        s.row.free(self.store.allocator);
     }
 
     pub fn getUserByEmail(self: *UserService, allocator: std.mem.Allocator, email: []const u8) !?UserRow {
@@ -240,7 +273,9 @@ pub const UserService = struct {
         const now = zigmodu.time.wallClockSeconds(self.io);
         // Housekeeping: drop this user's stale tokens before inserting a new
         // one so the table does not grow without bound.
-        self.store.deleteExpiredPasswordTokens(row.id, now, self.password_token_expiration_seconds) catch {};
+        self.store.deleteExpiredPasswordTokens(row.id, now, self.password_token_expiration_seconds) catch |err| {
+            std.log.warn("[user] 过期密码令牌清理失败 (user {d}): {s}", .{ row.id, @errorName(err) });
+        };
         _ = try self.store.createPasswordToken(row.id, hash, now);
         return .{ .user_id = row.id, .raw = raw };
     }
@@ -255,18 +290,26 @@ pub const UserService = struct {
         const now = zigmodu.time.wallClockSeconds(self.io);
         if (now - tok.created_at > self.password_token_expiration_seconds) {
             // The token is dead — purge it (and any older siblings) now.
-            self.store.deleteTokensForUser(user_id) catch {};
+            self.store.deleteTokensForUser(user_id) catch |err| {
+                std.log.warn("[user] 过期令牌删除失败 (user {d}),将由 tokens.cleanup 兜底: {s}", .{ user_id, @errorName(err) });
+            };
             return error.TokenExpired;
         }
-        if (!self.sec.module.verifyPassword(raw_token, tok.token)) return error.InvalidToken;
+        if (!try verifyPasswordChecked(self.sec, raw_token, tok.token)) return error.InvalidToken;
     }
 
     /// Reset a user's password after a valid token; clears all their tokens.
     pub fn resetPassword(self: *UserService, user_id: i64, raw_token: []const u8, new_password: []const u8) ResetTokenError!void {
         if (new_password.len < 8) return error.InvalidPassword;
         try self.validatePasswordResetToken(user_id, raw_token);
-        self.setPassword(user_id, new_password) catch return error.InvalidPassword;
-        self.store.deleteTokensForUser(user_id) catch return error.InvalidToken;
+        // 改密 + 清令牌同一事务(见 UserStore.resetPasswordAtomic)。
+        const hash = self.sec.module.hashPassword(new_password) catch return error.InvalidPassword;
+        defer self.sec.module.allocator.free(hash);
+        const now = zigmodu.time.wallClockSeconds(self.io);
+        self.store.resetPasswordAtomic(user_id, hash, now) catch |err| switch (err) {
+            error.UserNotFound => return error.InvalidToken,
+            else => return error.Unexpected, // DB 错误上抛 → API 层 500,不折成"链接无效"
+        };
     }
 
     // ── Email verification ────────────────────────────────────────
@@ -285,7 +328,9 @@ pub const UserService = struct {
         defer allocator.free(hash);
         const now = zigmodu.time.wallClockSeconds(self.io);
         // Housekeeping: drop this user's stale tokens before inserting a new one.
-        self.store.deleteExpiredEmailVerifications(user_id, now, self.verification_token_expiration_seconds) catch {};
+        self.store.deleteExpiredEmailVerifications(user_id, now, self.verification_token_expiration_seconds) catch |err| {
+            std.log.warn("[user] 过期邮箱验证令牌清理失败 (user {d}): {s}", .{ user_id, @errorName(err) });
+        };
         _ = try self.store.createEmailVerification(user_id, hash, now);
         return .{ .user_id = user_id, .raw = raw };
     }
@@ -298,13 +343,19 @@ pub const UserService = struct {
 
         const now = zigmodu.time.wallClockSeconds(self.io);
         if (now - tok.created_at > self.verification_token_expiration_seconds) {
-            self.store.deleteEmailVerificationsForUser(user_id) catch {};
+            self.store.deleteEmailVerificationsForUser(user_id) catch |err| {
+                std.log.warn("[user] 过期验证令牌删除失败 (user {d}),将由 tokens.cleanup 兜底: {s}", .{ user_id, @errorName(err) });
+            };
             return error.TokenExpired;
         }
-        if (!self.sec.module.verifyPassword(raw_token, tok.token)) return error.InvalidToken;
+        if (!try verifyPasswordChecked(self.sec, raw_token, tok.token)) return error.InvalidToken;
 
         self.setVerified(user_id, true) catch return error.InvalidToken;
-        self.store.deleteEmailVerificationsForUser(user_id) catch {};
+        // Best-effort：邮箱已置为已验证,这里只是清理已消费的令牌；删除失败时残留
+        // 行会在过期后由 tokens.cleanup 兜底清理。
+        self.store.deleteEmailVerificationsForUser(user_id) catch |err| {
+            std.log.warn("[user] 已消费验证令牌清理失败 (user {d}): {s}", .{ user_id, @errorName(err) });
+        };
     }
 
     /// Self-service password change: verify the current password, then set
@@ -314,7 +365,7 @@ pub const UserService = struct {
         const hash_opt = self.store.getPasswordHashById(id) catch return error.InvalidCredentials;
         const hash = hash_opt orelse return error.InvalidCredentials;
         defer self.sec.module.allocator.free(hash);
-        if (!self.sec.module.verifyPassword(old_password, hash)) return error.InvalidCredentials;
+        if (!try verifyPasswordChecked(self.sec, old_password, hash)) return error.InvalidCredentials;
         self.setPassword(id, new_password) catch return error.InvalidPassword;
         const now_s = zigmodu.time.wallClockSeconds(self.io);
         // 改密后必须 bump 凭证版本使旧 JWT 失效;失败不能静默吞掉。

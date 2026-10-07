@@ -78,7 +78,12 @@ pub fn FileApi(comptime Service: type, comptime UserService: type) type {
                 try ctx.sendErrorResponse(400, 400, "缺少文件内容");
                 return;
             };
-            const filename = ctx.header("X-File-Name") orelse "upload.bin";
+            // 存储与展示名都走净化名(剔除路径分隔符/控制字符/引号),原始
+            // X-File-Name 不落库不落盘(防路径穿越/header 注入)。
+            var name_buf: [256]u8 = undefined;
+            const raw_name = ctx.header("X-File-Name") orelse "upload.bin";
+            const cleaned = sanitizeFilename(&name_buf, raw_name);
+            const filename = if (cleaned.len == 0) "upload.bin" else cleaned;
             const mime = ctx.header("Content-Type") orelse "application/octet-stream";
 
             const tenant_id = mw.authTenantId(ctx) orelse self.default_tenant_id;

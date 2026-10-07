@@ -217,6 +217,31 @@ pub const UserStore = struct {
         _ = try upd.Save();
     }
 
+    /// 改密原子化:口令哈希更新 + 清空该用户全部密码令牌在同一事务提交,
+    /// 消除"密已改、令未清"的中间态(窗口期内旧重置链接仍可重放)。
+    /// 用户不存在时 0 行命中 → 回滚并报 UserNotFound(同 ai deleteSession 模式)。
+    pub fn resetPasswordAtomic(self: *UserStore, id: i64, password_hash: []const u8, now: i64) !void {
+        var tx = try zent.codegen.beginTx(schema.infos, self.client);
+        defer tx.deinit();
+        {
+            const upreds = tx.client.user.predicates;
+            var upd = tx.client.user.Update();
+            defer upd.deinit();
+            _ = try upd.set("password", .{ .string = password_hash });
+            _ = try upd.setFieldValue("updated_at", now);
+            _ = try upd.Where(.{upreds.idEQ(.{ .int = id })});
+            if ((try upd.Save()) == 0) return error.UserNotFound; // defer tx.deinit() → ROLLBACK
+        }
+        {
+            const tpreds = tx.client.password_token.predicates;
+            var d = tx.client.password_token.Delete();
+            defer d.deinit();
+            _ = try d.Where(.{tpreds.user_idEQ(.{ .int = id })});
+            _ = try d.Exec();
+        }
+        try tx.commit();
+    }
+
     pub fn freeList(self: *UserStore, result: *UserListResult) void {
         result.free(self.allocator);
     }
@@ -341,8 +366,7 @@ pub const UserStore = struct {
         var d = self.client.password_token.Delete();
         defer d.deinit();
         _ = try d.Where(.{preds.created_atLT(.{ .int = cutoff })});
-        _ = try d.Exec();
-        return 0;
+        return try d.Exec();
     }
 
     /// Global sweep (cron): remove every expired email-verification token.
@@ -352,8 +376,7 @@ pub const UserStore = struct {
         var d = self.client.email_verification.Delete();
         defer d.deinit();
         _ = try d.Where(.{preds.created_atLT(.{ .int = cutoff })});
-        _ = try d.Exec();
-        return 0;
+        return try d.Exec();
     }
     /// Total user count (dashboard stats).
     pub fn countAll(self: *UserStore) !i64 {

@@ -176,8 +176,9 @@ const SmtpConnection = struct {
                 try t.reader.readSliceShort(&one)
             else blk: {
                 const stream = self.stream orelse unreachable;
-                var iovec: [1][]u8 = .{&one};
-                break :blk try stream.read(self.io, &iovec);
+                // std.Io.net.Stream.read 在 0.17.0 stable 上 std 自身破碎（ReadResult 解构编译断），
+                // 与上游 zigmodu v0.39.5 第 127 批同修法：阻塞 socket 读走 raw posix.read（0 → EOF）。
+                break :blk try std.posix.read(stream.socket.handle, &one);
             };
             if (n == 0) return error.ConnectionClosed;
             self.read_buf[i] = one[0];

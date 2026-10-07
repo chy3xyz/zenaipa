@@ -117,7 +117,7 @@ pub fn AuthApi(comptime Service: type) type {
             // Public routes are rate-limited to blunt credential stuffing /
             // reset-token brute force.
             // per-IP 限流(攻击者无法耗尽全局桶误伤他人)。
-            var limited = try group.use(zigmodu.http.tracing_middleware.rateLimitPerClient(self.registry, clientIpKey));
+            var limited = try group.use(try zigmodu.http.tracing_middleware.rateLimitPerClient(self.registry, clientIpKey));
             try limited.post("/auth/register", register, @ptrCast(@alignCast(self)));
             try limited.post("/auth/login", login, @ptrCast(@alignCast(self)));
             try limited.post("/auth/logout", logout, @ptrCast(@alignCast(self)));
@@ -168,7 +168,7 @@ pub fn AuthApi(comptime Service: type) type {
                     return;
                 },
             };
-            defer session.deinit(self.svc.store.allocator);
+            defer self.svc.freeSession(&session);
             // Email verification is a background courtesy: never block the
             // registration response on mail delivery.
             if (!session.row.verified) self.sendVerificationMail(ctx, session.row.id);
@@ -202,15 +202,20 @@ pub fn AuthApi(comptime Service: type) type {
                     try ctx.sendErrorResponse(401, 401, "邮箱或密码错误");
                     return;
                 },
+                error.OutOfMemory, error.MalformedStoredHash => {
+                    std.log.err("internal error: {s}", .{@errorName(err)});
+                    try ctx.sendErrorResponse(500, 500, "服务器错误");
+                    return;
+                },
             };
-            const session = session_opt orelse {
+            var session = session_opt orelse {
                 var d3: [160]u8 = undefined;
                 const det3 = try std.fmt.bufPrint(&d3, "登录失败: {s}", .{req.email});
                 self.audit.log(0, "", "auth.login.fail", "user", 0, det3, zigmodu.http.RequestUtil.getRealIp(ctx), false, 0);
                 try ctx.sendErrorResponse(401, 401, "邮箱或密码错误");
                 return;
             };
-            defer session.deinit(self.svc.store.allocator);
+            defer self.svc.freeSession(&session);
             var d4: [128]u8 = undefined;
             const det4 = try std.fmt.bufPrint(&d4, "登录成功: {s}", .{req.email});
             self.audit.log(session.row.id, session.row.name, "auth.login", "user", session.row.id, det4, zigmodu.http.RequestUtil.getRealIp(ctx), true, session.row.tenant_id);
@@ -270,7 +275,9 @@ pub fn AuthApi(comptime Service: type) type {
                 defer rendered.free(self.svc.store.allocator);
                 const payload = jsonPayload(ctx.allocator, req.email, rendered.subject, rendered.body) catch return;
                 defer ctx.allocator.free(payload);
-                _ = self.task_svc.enqueue("mail.send", payload, 0, self.default_tenant_id) catch {};
+                _ = self.task_svc.enqueue("mail.send", payload, 0, self.default_tenant_id) catch |err| {
+                    std.log.err("[auth] forgot-password 邮件入队失败 ({s}): {s}", .{ req.email, @errorName(err) });
+                };
             }
             // Always respond ok to avoid user enumeration.
             try ctx.jsonStruct(200, .{ .code = 0, .msg = "若该邮箱已注册，重置链接已发送", .data = null });
@@ -296,6 +303,16 @@ pub fn AuthApi(comptime Service: type) type {
                 },
                 error.TokenExpired => {
                     try ctx.sendErrorResponse(400, 400, "重置链接已过期");
+                    return;
+                },
+                error.Unexpected => {
+                    std.log.err("internal error: {s}", .{@errorName(err)});
+                    try ctx.sendErrorResponse(500, 500, "服务器错误");
+                    return;
+                },
+                error.OutOfMemory, error.MalformedStoredHash => {
+                    std.log.err("internal error: {s}", .{@errorName(err)});
+                    try ctx.sendErrorResponse(500, 500, "服务器错误");
                     return;
                 },
             };
@@ -330,9 +347,16 @@ pub fn AuthApi(comptime Service: type) type {
                     try ctx.sendErrorResponse(400, 400, "验证链接已过期，请重新发送");
                     return;
                 },
+                error.OutOfMemory, error.MalformedStoredHash => {
+                    std.log.err("internal error: {s}", .{@errorName(err)});
+                    try ctx.sendErrorResponse(500, 500, "服务器错误");
+                    return;
+                },
             };
             try ctx.jsonStruct(200, .{ .code = 0, .msg = "邮箱验证成功", .data = null });
-            _ = self.notify_svc.notify(req.user_id, "邮箱验证成功", "你的邮箱已通过验证。", "success") catch {};
+            if (self.notify_svc.notify(req.user_id, "邮箱验证成功", "你的邮箱已通过验证。", "success")) |_| {} else |err| {
+                std.log.warn("[auth] 验证成功通知发送失败 (user {d}): {s}", .{ req.user_id, @errorName(err) });
+            }
         }
 
         /// Self-service profile update (name / email). Delegates to the
@@ -426,9 +450,16 @@ pub fn AuthApi(comptime Service: type) type {
                     try ctx.sendErrorResponse(500, 500, "密码已更新,但旧会话失效失败,请重新登录");
                     return;
                 },
+                error.OutOfMemory, error.MalformedStoredHash => {
+                    std.log.err("internal error: {s}", .{@errorName(err)});
+                    try ctx.sendErrorResponse(500, 500, "服务器错误");
+                    return;
+                },
             };
             try ctx.jsonStruct(200, .{ .code = 0, .msg = "密码已更新", .data = null });
-            _ = self.notify_svc.notify(uid, "密码已修改", "你的登录密码已更新。", "info") catch {};
+            if (self.notify_svc.notify(uid, "密码已修改", "你的登录密码已更新。", "info")) |_| {} else |err| {
+                std.log.warn("[auth] 改密通知发送失败 (user {d}): {s}", .{ uid, @errorName(err) });
+            }
         }
 
         /// Best-effort verification mail: token creation + Mailer.send are
@@ -448,8 +479,12 @@ pub fn AuthApi(comptime Service: type) type {
             defer rendered.free(self.svc.store.allocator);
             const payload = jsonPayload(ctx.allocator, row.email, rendered.subject, rendered.body) catch return;
             defer ctx.allocator.free(payload);
-            _ = self.task_svc.enqueue("mail.send", payload, 0, row.tenant_id) catch {};
-            _ = self.notify_svc.notify(user_id, "验证邮件已发送", "请查收邮件并点击验证链接。", "info") catch {};
+            _ = self.task_svc.enqueue("mail.send", payload, 0, row.tenant_id) catch |err| {
+                std.log.err("[auth] 验证邮件入队失败 (user {d}): {s}", .{ user_id, @errorName(err) });
+            };
+            if (self.notify_svc.notify(user_id, "验证邮件已发送", "请查收邮件并点击验证链接。", "info")) |_| {} else |err| {
+                std.log.warn("[auth] 验证邮件站内通知失败 (user {d}): {s}", .{ user_id, @errorName(err) });
+            }
         }
     };
 }

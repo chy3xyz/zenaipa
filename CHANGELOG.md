@@ -7,6 +7,182 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Web 控制台（对齐 zweq UI 实践）
+
+- **修复：表格页不再"打开即空"**。`usePaged` 原本不自动加载，6 个表格页挂载后
+  必须手动点查询才出数据；现在挂载自动请求，并新增 `refresh()` /
+  `changePageSize()` / `watch`（依赖变化自动回第 1 页），保留防乱序的
+  requestSeq 守卫。浏览器实测：登录落地 /users 即见数据。
+- **修复：服务端中文错误信息真正可见**。axios 响应拦截器解析非 2xx 响应体的
+  `{code,msg}` 信封并抛 `ApiError`（此前 400 只能看到 axios 默认英文文案）。
+- **请求数据层收敛**：`get/post/put/deleteEnvelope<T>` 上移到 `client.ts`，
+  10 个域目录的重复实现与 ~8 处手写 `XListResult` 分页形状（→ `PageResult<T>`）
+  全部收敛；`toApiError` 移入 client（barrel 保持原导出路径）。
+- **组件基建**（新）：`BaseModal`/`FormModal`/`FormField`（统一弹窗三层 +
+  每弹窗独立提交态，防双击）、`FeedbackProvider`（toast + Promise 确认框 +
+  `runAction` 标准动作流，替换全部 `window.confirm`(7 处)/`window.alert`(3 处)
+  与内联成功块）、`Pagination`（页码窗口/页大小/跳页）、`AdminCrudPage`
+  页骨架、`SearchBar`（草稿式筛选）、`EmptyState`、`StatCard`；
+  `DataTable` 集成完整分页器 + 加载遮罩 + 吸右操作列。
+- **页面迁移**：Users 为参照实现；Tenants/Tasks/Files/AuditLogs/MailTemplates/
+  Dashboard/Profile/AiAdmin/AiChat 全部采用新组件。AiAdmin 三张手写表换
+  DataTable + 分页，provider 弹窗补提交态（此前可双击重复提交），批准/拒绝
+  加行级 busy；Tasks/Dashboard 统计卡片改挂载即加载。
+- **壳与导航**：侧边栏改 `constants/nav.ts` 配置驱动（消除 10 处重复类名串）；
+  深色模式默认跟随 `prefers-color-scheme`（保留手动切换 + 持久化）。
+- **清理与测试**：删除失联的 `pages/index.ts` barrel、过期注释与未用 env 声明；
+  新增 5 个测试文件 21 个用例（envelope 解包、usePaged 自动加载/乱序守卫/
+  changePageSize/watch、FormModal 提交态）。`typecheck`/`vitest`(21)/`build`
+  全绿，并经真实浏览器（登录 → 表格自动加载 → 跨页抽查）验证。
+
+### Dependencies
+
+- **zent v0.67.0 → v0.83.0 + zigmodu v0.20.1 → v0.39.6**, pinned by git
+  tag + content hash. zigmodu v0.39.6 is upstream's latest; zent lands on
+  the current latest (v0.83.0, ahead of the sibling project's v0.78.0).
+  Compile-level breaks adopted: middleware factories (`cors`,
+  `securityHeaders`, `rateLimitPerClient`) are now fallible (`try`);
+  `SecurityModule.verifyPassword` returns
+  `error{MalformedStoredHash, OutOfMemory}!bool`. Behavior changes that
+  ride along: SQLite now enforces foreign keys (test fixtures stay
+  child-before-parent clean — no escape hatch added); aggregates on
+  grouped queries error instead of lying (`GroupByNotSupported`); empty
+  `Sum`/`Avg` answer `EmptyAggregate` (app already used `SumOrZero`).
+  zent 0.79–0.83 ride-alongs are transparent to this app (we use
+  `crud_helpers`, not `CrudService`; no grouped single-value aggregates;
+  error switches are `else`-based) but fix real classes underneath us:
+  PostgreSQL prepared-statement 42P05/0A000 after DDL, MySQL lost
+  connections now classified `ConnectionFailed` + `dead` marking,
+  `beginTx` no longer strands a transaction on OOM, `uuidv4` seeded from
+  OS entropy + thread-safe, pool borrow bookkeeping races, comptime
+  branch-quota hardening for mid-size graphs (our 12-group migration
+  qualifies). Not hit (verified unused here): `ThreadSafeEventBus.subscribe`
+  → `!void`, `Method.fromString` → optional, builder bind-then-build
+  idiom, `CrudService.get` → `getOwned`.
+- **Toolchain unified on the Zig 0.17.0 official release** (zon
+  `minimum_zig_version`, CI tarball URL, Dockerfile `ARG ZIG_VERSION`)
+  — the dev-snapshot pin (`0.17.0-dev.1970`) is gone. One std
+  regression workaround: `std.Io.net.Stream.read` fails to compile on
+  0.17.0 stable (ReadResult destructure); the SMTP read path uses raw
+  `std.posix.read` (same fix as upstream zigmodu's 127th batch).
+
+### Security
+
+- **SSRF baseline for admin-configured outbound URLs** (new
+  `src/http/url_guard.zig`, ported pattern): scheme allow-list
+  (http/https), userinfo stripping (`http://x@127.0.0.1/` bypass),
+  literal loopback/private-host rejection — no DNS resolution
+  (documented limitation). Enforced at both AI provider endpoint write
+  paths (`POST/PUT /ai/providers` → 400) and, defense-in-depth, before
+  every server-side outbound call (`chat`, `checkProvider` → logged +
+  502), so legacy rows or direct DB writes cannot bypass the API gate.
+  Covered by 3 new unit tests (38 total).
+- **AI admin route group now also runs `tokenVersionGuard`** — the
+  user-facing AI group had it, the admin group silently didn't; a
+  kicked-out admin's pre-revocation token stayed valid until expiry.
+- **Production preflight is fail-closed** (zigmodu `Preflight`):
+  prod-like mode (`ZENAIPA_ENV=production` **or** postgres driver)
+  now refuses to start on placeholder/short JWT secrets (min 16 chars)
+  or `ZENAIPA_CORS_ORIGINS=*`. Previously only the postgres case
+  checked secret-explicitness.
+- **Upload hardening**: the previously dead `sanitizeFilename` is now
+  wired into the upload handler (stored/display names are basename +
+  control-char/quote stripped; raw `X-File-Name` is no longer persisted
+  verbatim), and `extensionOf` only accepts alphanumeric extensions —
+  a crafted `x.png/../../etc` tail can no longer slip path components
+  into the storage key.
+
+### Fixed
+
+- **Double-`join` panic on every graceful shutdown**: the server thread
+  was joined explicitly after `server.stop()` *and* again by a `defer`
+  — joining a joined pthread is ESRCH → `unreachable` → panic on every
+  SIGTERM. Now a single join with an error-path-only safety net.
+- **~1 silent allocator leak per login** (found by the new e2e
+  shutdown-leak gate on its first run): `login` copied the password hash
+  with the store's allocator but freed it with `ctx.allocator` — the
+  request-side arena whose `free` is a no-op. Session teardown is now
+  ownership-explicit via `UserService.freeSession` (token → security
+  module's allocator, row → store's allocator); `login` frees the hash
+  with its owner; the `/health/ready` probe frees list rows with the
+  store. AI API no longer frees store-owned rows with `ctx.allocator`.
+- **Task queue state machine made race-honest**: `markDone` and
+  `markFailedOrRetry` now transition only rows still in `claimed`
+  (conditional UPDATE), and `markDone` reports affected rows — a worker
+  that stalled past the stale threshold can no longer overwrite the
+  requeue/failed verdict written while it ran (dispatcher logs the
+  rejection). `retryTask`/`cancelTask` return the real affected-row
+  result instead of unconditional `true` (already-pending retry reads
+  as "nothing to do", not fabricated success).
+- **`mail.send` handler validates its payload**: malformed JSON /
+  missing fields / wrong-typed values now fail the run (→ `last_error`
+  + retry within budget) instead of silently counting as done;
+  unchecked `.string` dereferences on wrong-typed fields could panic
+  the dispatcher thread and stall the queue.
+- **Purge/delete counts are real**: `purgeFinished`,
+  `purgeExpiredPasswordTokens`, `purgeExpiredEmailVerifications`,
+  `notify.purgeOlderThan` returned hardcoded 0; `notify.markRead`/
+  `delete` returned unconditional `true`. API consumers and cron logs
+  now see actual affected-row counts.
+- **`register` no longer masks DB errors as 409**: an unreachable DB
+  during signup answered "email already taken"; the pre-check and the
+  race re-check now propagate storage failures as 500.
+- **`system/info` version came from a hardcoded `"0.2.0"`** (project at
+  0.2.3); it is injected from the build (`-Drelease=x.y.z`, default
+  synced with CHANGELOG).
+- **27 silent `catch {}` sites triaged**: cron purges, fire-and-forget
+  mail/notify enqueues, token housekeeping, AI best-effort persistence,
+  cache set, orphan-file cleanup — each now either logs with context or
+  carries a comment justifying the swallow. Internal `@errorName`s no
+  longer reach clients (3 leaks: SSE error events, chat 502, provider
+  check 502 now answer generic messages and log the detail).
+
+### Changed
+
+- **SQL drivers linked on demand (`-Ddb=`)**: default
+  `sqlite,postgres` (both are runtime-switchable via
+  `ZENAIPA_DB_DRIVER`, so both must be linked); `mysql` — never used —
+  is now opt-in (`-Ddb=sqlite,postgres,mysql`), skipping ~30 s / ~590 MB
+  of translate-c per build. The choice is forwarded to both framework
+  deps, which otherwise default to `all` and sneak unused drivers back
+  in.
+- **Server caps configured**: `max_connections` +
+  `over_limit_response = .unavailable` (accept-flood now answers 503
+  instead of exhausting fd/memory) and `request_timeout_ms` (default
+  30 s) — new env `ZENAIPA_HTTP_MAX_CONNECTIONS` /
+  `ZENAIPA_HTTP_REQUEST_TIMEOUT_MS`.
+- **Cache service is now thread-safe**: zigmodu's `CacheManager` is
+  documented single-threaded but connections arrive concurrently; all
+  manager access is serialized through an `std.Io.Mutex` (`getOrSet`
+  runs its loader outside the lock), and a failed cache set after a
+  successful loader is logged instead of swallowed.
+- **`resetPassword` is transactional**: password update + clearing all
+  password-reset tokens commit atomically (`UserStore.
+  resetPasswordAtomic`), closing the window where an old reset link
+  could still be replayed against an already-changed password.
+- **zent library diagnostics are visible**: `zent.runtime.log.setSink`
+  forwards the driver's internal err/warn/info/debug (scan/migrate/
+  pool) into `std.log`.
+- **Dispatcher counters are exported**: `processed`/`failed` existed as
+  atomics but were never rendered; `/metrics` now includes
+  `zenaipa_task_processed_total` / `zenaipa_task_failed_total`.
+
+### Added
+
+- **Static gates as `zig build` steps**: `lint-size` (≤1800 lines/file,
+  `scripts/check_file_size.sh`) and `lint-fmt` (`zig fmt --check`),
+  both wired into CI.
+- **E2E smoke + shutdown leak gate** (`scripts/run_e2e.sh`, CI job):
+  real binary + fresh SQLite → probes → admin/login/system-info →
+  SIGTERM → assert exit ≤20 s, no panic, no SafeAllocator leak report.
+  This gate caught the login leak listed above on its first run.
+- **Dockerfile rewritten self-contained**: builds deps from the zon
+  pins in-container (no sibling checkouts), Zig 0.17.0 official via
+  TARGETARCH-mapped tarball, BuildKit cache mounts, ReleaseSafe +
+  stripped binaries, non-root user, `/data` volume, `HEALTHCHECK` on
+  `/health/live`. The previous file cloned `zig_ws/*` siblings and
+  pinned a stale dev snapshot — it could not build the current tree.
+
 ## [0.2.3] - 2026-09-17
 
 ### Security

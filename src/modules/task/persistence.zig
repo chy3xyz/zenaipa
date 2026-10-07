@@ -180,7 +180,9 @@ pub const TaskStore = struct {
         return try self.getTaskById(entity.id);
     }
 
-    pub fn markDone(self: *TaskStore, id: i64, now: i64) !void {
+    /// 状态条件收尾:只有仍处 claimed 的行才能落到 done。0 行说明任务已被
+    /// requeueStale 重排/判失败(停摆 worker 的迟到完成不得覆写结果)。
+    pub fn markDone(self: *TaskStore, id: i64, now: i64) !bool {
         const preds = self.client.task.predicates;
         var upd = self.client.task.Update();
         defer upd.deinit();
@@ -188,12 +190,14 @@ pub const TaskStore = struct {
         _ = try upd.setFieldValue("finished_at", now);
         _ = try upd.setFieldValue("updated_at", now);
         _ = try upd.Where(.{preds.idEQ(.{ .int = id })});
-        _ = try upd.Save();
+        _ = try upd.Where(.{preds.statusEQ(.{ .string = "claimed" })});
+        return (try upd.Save()) > 0;
     }
 
     /// Mark failed permanently, or schedule a retry (attempts stay as-is;
-    /// the next claim increments them again).
-    pub fn markFailedOrRetry(self: *TaskStore, id: i64, attempts: i64, max_attempts: i64, last_error: []const u8, now: i64, retry_interval: i64) !void {
+    /// the next claim increments them again). Only a still-claimed row may
+    /// transition; returns false when the status moved on under us.
+    pub fn markFailedOrRetry(self: *TaskStore, id: i64, attempts: i64, max_attempts: i64, last_error: []const u8, now: i64, retry_interval: i64) !bool {
         const preds = self.client.task.predicates;
         var upd = self.client.task.Update();
         defer upd.deinit();
@@ -209,7 +213,8 @@ pub const TaskStore = struct {
         }
         _ = try upd.setFieldValue("updated_at", now);
         _ = try upd.Where(.{preds.idEQ(.{ .int = id })});
-        _ = try upd.Save();
+        _ = try upd.Where(.{preds.statusEQ(.{ .string = "claimed" })});
+        return (try upd.Save()) > 0;
     }
 
     /// Re-queue tasks whose worker died mid-run (`claimed` but started too
@@ -232,7 +237,7 @@ pub const TaskStore = struct {
         defer retry_ids.deinit(self.allocator);
         for (found.items) |e| {
             if (e.attempts >= e.max_attempts) {
-                try self.markFailedOrRetry(e.id, e.attempts, e.max_attempts, "stale (worker died)", now, 0);
+                _ = try self.markFailedOrRetry(e.id, e.attempts, e.max_attempts, "stale (worker died)", now, 0);
             } else {
                 try retry_ids.append(self.allocator, e.id);
             }
@@ -266,8 +271,7 @@ pub const TaskStore = struct {
         _ = try upd.setFieldValue("updated_at", now);
         _ = try upd.Where(.{preds.idEQ(.{ .int = id })});
         _ = try upd.Where(.{preds.statusNE(.{ .string = "pending" })});
-        _ = try upd.Save();
-        return true;
+        return (try upd.Save()) > 0;
     }
 
     pub fn cancelTask(self: *TaskStore, id: i64, now: i64) !bool {
@@ -279,8 +283,7 @@ pub const TaskStore = struct {
         _ = try upd.setFieldValue("updated_at", now);
         _ = try upd.Where(.{preds.idEQ(.{ .int = id })});
         _ = try upd.Where(.{preds.statusEQ(.{ .string = "pending" })});
-        _ = try upd.Save();
-        return true;
+        return (try upd.Save()) > 0;
     }
 
     pub fn deleteTask(self: *TaskStore, id: i64) !void {
@@ -301,8 +304,7 @@ pub const TaskStore = struct {
         var d = self.client.task.Delete();
         defer d.deinit();
         _ = try d.Where(.{or_pred});
-        _ = try d.Exec();
-        return 0;
+        return try d.Exec();
     }
 
     pub fn countByStatus(self: *TaskStore) !StatusCounts {

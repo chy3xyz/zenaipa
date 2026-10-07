@@ -110,7 +110,10 @@ pub const FileService = struct {
         try self.store.delete(id);
         const path = try self.pathFor(row.storage_key);
         defer self.allocator.free(path);
-        std.Io.Dir.cwd().deleteFile(self.io, path) catch {};
+        // 元数据已删;磁盘文件尽力而为,失败只留痕(孤儿文件可由运维清理)。
+        std.Io.Dir.cwd().deleteFile(self.io, path) catch |err| {
+            std.log.warn("[file] 孤儿磁盘文件删除失败 ({s}): {s}", .{ path, @errorName(err) });
+        };
     }
 
     fn storageKey(self: *FileService, filename: []const u8) ![]const u8 {
@@ -139,7 +142,18 @@ const allowed_extensions = [_][]const u8{
 fn extensionOf(filename: []const u8) []const u8 {
     if (std.mem.lastIndexOfScalar(u8, filename, '.')) |i| {
         const ext = filename[i + 1 ..];
-        if (ext.len > 0 and ext.len <= 16) return ext;
+        // 只接受字母数字扩展名:防 "x.png/../../etc" 之类带路径成分的尾巴
+        // 混进存储键(pathFor 直接拼接 upload_dir)。
+        if (ext.len > 0 and ext.len <= 16) {
+            var ok = true;
+            for (ext) |c| {
+                if (!std.ascii.isAlphanumeric(c)) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) return ext;
+        }
     }
     return "bin";
 }
