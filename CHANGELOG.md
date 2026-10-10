@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Dependencies
+
+- **zent v0.83.0 → v0.87.0 + zigmodu v0.39.6 → v0.39.9**（上游最新）。
+  zigmodu 对本 app 用面零签名变化（仅新增 `tableLoaderSlotsClaimed` /
+  `openApiBindingsClaimed` / `resultHandler`），drop-in。zent 0.84–0.87
+  为驱动与内存修复（PG prepared-statement 缓存接入 `query()`、MySQL
+  bool/float 假漂移、edge FK 按 `table_name` 解析、若干 OOM 泄漏）加
+  附加式 API（`field.String…VarChar(n)`、`client.<t>.AllOwned(alloc)`）；
+  0.84 的 EntQL "字段名优先" 改动不涉及本 app（未用 `WhereEntQL`/`has()`）。
+  无代码改动，清 `.zig-cache` 后 38 测试 + e2e 门禁全绿。
+
 ## [0.3.0] - 2026-10-07
 
 ### Web 控制台（对齐 zweq UI 实践）
