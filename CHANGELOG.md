@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **web 依赖审计收敛**：`npm audit fix` 处理 6 → 3 个通告；剩余 3 个位于
+  dev 工具链（vitest→tinypool，需 vitest@5 跨大版本），不在 rsbuild 产物
+  内。CI 审计门禁改为 `npm audit --omit=dev --audit-level=high`（只把
+  发布面当门禁），生产依赖实测 0 漏洞。
+
 ### Dependencies
 
 - **zent v0.83.0 → v0.87.0 + zigmodu v0.39.6 → v0.39.9**（上游最新）。

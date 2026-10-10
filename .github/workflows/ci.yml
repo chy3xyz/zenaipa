@@ -65,7 +65,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
-      - run: npm audit --audit-level=high
+      # 生产依赖面审计（--omit=dev）：dev 链（vitest→tinypool）当前有需要
+      # vitest@5 跨大版本才能消的通告，不在发布产物里，不作为发布门禁。
+      - run: npm audit --omit=dev --audit-level=high
         working-directory: web
       - run: npm run typecheck
         working-directory: web
