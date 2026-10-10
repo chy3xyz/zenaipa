@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-10
+
 ### Fixed
 
 - **web 依赖审计收敛**：`npm audit fix` 处理 6 → 3 个通告；剩余 3 个位于
