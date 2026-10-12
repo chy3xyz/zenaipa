@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-12
+
 ### Dependencies
 
 - **zent v0.87.0 → v0.91.0 + zigmodu v0.39.9 → v0.39.11**（上游最新）。
