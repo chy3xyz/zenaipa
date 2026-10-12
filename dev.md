@@ -3,7 +3,7 @@
 项目名：zenaipa
 
 - 后端：zigmodu 最佳实践（依赖经 `build.zig.zon` 以 git tag + hash 锁定：
-  zigmodu v0.39.9 / zent v0.87.0，Zig 0.17.0 正式版；本地联调上游改动时临时切回
+  zigmodu v0.39.11 / zent v0.91.0，Zig 0.17.0 正式版；本地联调上游改动时临时切回
   `.path = "../../zig_ws/<repo>"`），数据库采用 zent，以
   PostgreSQL 为主、SQLite 兜底
 - 前端：Solid 技术栈（参考 `~/w4_proj/dev_machine/saas_admin_ui/zadmin-solid`）

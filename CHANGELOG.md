@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Dependencies
+
+- **zent v0.87.0 → v0.91.0 + zigmodu v0.39.9 → v0.39.11**（上游最新）。
+  zigmodu 用面签名零变化（drop-in）。zent 0.88–0.91：受控 JOIN v1
+  （`QueryBuilder.joinEdge`）、0.90 的四个可失败孪生构造器（原
+  `Insert/Update/Delete` 工厂不变，本 app 零改动）、SQLite 文本数值可选
+  解析、一批 OOM 路径修复（分配失败扫描覆盖 eager-load/join 组装/
+  `BulkDeleteBuilder` 等）。清 `.zig-cache` 后 38 测试 + e2e 门禁全绿。
+
 ## [0.3.1] - 2026-10-10
 
 ### Fixed
