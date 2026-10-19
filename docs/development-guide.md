@@ -217,7 +217,7 @@ try tx.commit();
 
 ### 3.6 zent ≥ v0.30 新增能力(按需采用)
 
-当前基线 zent v0.67.0 + zigmodu v0.20.1,以下能力可直接用:
+当前基线 zent v0.96.0 + zigmodu v0.39.18,以下能力可直接用:
 
 - 业务键 upsert:`CreateBuilder.SaveOrUpdateOn(&.{"code"})` /
   `SaveIgnore()`(v0.30)——替代「exists 判断后 insert」,天然幂等
@@ -247,7 +247,7 @@ try tx.commit();
     ⚠️ `AggregateBy` 的**字符串分组键在 SQLite 上是坏的**:`readAggValue`
     先试 `getInt`,`sqlite3_column_int64` 把 TEXT 键强转为 `.int = 0`,
     各组计数会全部串零(PG 走纯文本协议 `parseInt` 失败后落到
-    `getText`,不受影响)。**v0.67.0 复查仍未修**(readAggValue 依旧
+    `getText`,不受影响)。**v0.96.0 复查仍未修**(readAggValue 依旧
     getInt 优先)。上游修复前,字符串分组的统计保持逐谓词
     `Count`(参考 task `countByStatus` 注释),整数分组键可放心用;
   - 按列 upsert 表达式:`SaveOrUpdateOnWith` + `UpsertSetExpr`
@@ -276,7 +276,7 @@ try tx.commit();
   - 视图/外键/漂移检测、连接池并发不变量、借出预算
     (`borrowWithTimeout`)等,详见 zent CHANGELOG——纯增量,用到再查。
 
-- zigmodu v0.15.37–v0.20.1 要点:
+- zigmodu v0.15.37–v0.39.18 要点:
   - **`http.UploadGuard`**(0.15.46,本项目 file 模块已接入):按字节
     嗅探判定文件类型,主动内容(SVG/HTML)改名也拒收;扩展名/格式
     白名单、扩展名↔内容一致性、单文件大小,判定顺序见其文档头;
@@ -405,3 +405,32 @@ try tx.commit();
 - 发版流程:更新 `CHANGELOG.md` → bump `build.zig.zon` version →
   `chore(release): vX.Y.Z` 提交 → `git tag vX.Y.Z` → push → 
   `gh release create`(notes 取 CHANGELOG)。
+
+### 8.1 life 反馈闭环(面向 agent 开发,zigmodu ≥ 0.39.14)
+
+仓库的 `.life/` 是机器可读的 issue/release 事实源(zigmodu life 系统,
+spec 见上游 `docs/superpowers/specs/2026-10-16-life-issue-release-design.md`),
+供 AI agent 与人共用同一状态机(14 态,服务端式强制校验,每次 transition
+自动落审计评论)。CLI 用 zigmodu 检出的 `zig-out/bin/zmodu`(或自行
+`zig build` 重建):
+
+- **agent/用户反馈进来** → `zmodu life issue new --title T --category bug
+  --source agent --reporter <name> --fingerprint <sha256> --repro K=V ...`;
+  指纹取 `域|主体|细节` 的 sha256(如 `upstream|zent-AggregateBy|
+  sqlite-text-group-key-coerce`),重复反馈按指纹去重;
+- **修复推进** → `zmodu life issue transition LI-XXXX <state> --assignee A
+  --note N --by AGENT`(注意 new→triaged 必须带 --assignee;终态
+  closed/duplicate/rejected 无出边);
+- **发版窗口** → `zmodu life release draft <version>` 自动选窗口内
+  fixed/verified/closed 的 issue 并从 `CHANGELOG.md` 拼接 `## [<version>]`
+  节(版本号与 CHANGELOG 标题一致,不带 v 前缀);`publish` 不可变,
+  渲染 `.life/feed/life.json` + `atom.xml` 公布出口;
+- **演进记录** → `zmodu life evolve <version> <message>` 追加
+  `.life/tree/`。
+- `zmodu ci --life`(失败门禁自动建 issue,指纹 `sha256(ci|step|detail)`)
+  面向上游自带 CI runner;本项目用 GitHub Actions,接入留待需要时
+  (runner 里构建 zmodu 后在失败步调用)。
+- `.life/` 整目录入库(事实源本身,含派生 feed);首次播种:LI-0001
+  记录 zent AggregateBy SQLite TEXT 键强转 bug(v0.96.0 复查仍未修),
+  release 0.3.2 已 publish。
+

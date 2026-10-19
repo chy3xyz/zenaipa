@@ -7,7 +7,7 @@
 让你在咖啡凉掉之前,把内部管理台搭好上线。
 
 [![Zig](https://img.shields.io/badge/Zig-0.17-orange?logo=zig&logoColor=white)](https://ziglang.org)
-[![zigmodu](https://img.shields.io/badge/zigmodu-v0.20.1-blue)](https://github.com/chy3xyz/zigmodu)
+[![zigmodu](https://img.shields.io/badge/zigmodu-v0.39.18-blue)](https://github.com/chy3xyz/zigmodu)
 [![zent](https://img.shields.io/badge/zent-ORM-6b46c1)](https://github.com/chy3xyz/zent)
 [![SolidJS](https://img.shields.io/badge/前端-SolidJS-2c4f7c?logo=solid&logoColor=white)](https://www.solidjs.com)
 [![Tests](https://img.shields.io/badge/测试-31%20后端%20%2B%205%20前端-green)]()
@@ -67,7 +67,7 @@
 ### 💎 工程品质
 - Schema-as-code 迁移(启动自动);SQLite ↔ PostgreSQL 一个环境变量切换
 - 全链路类型安全查询(零 SQL 字符串拼接)
-- **35 个后端测试**(store/service、Testkit HTTP、JWT/多租户、审计、AI 加密/审批/配额、管理端门禁 401/403/200、会话吊销)+ **5 个前端测试**(vitest)
+- **38 个后端测试**(store/service、Testkit HTTP、JWT/多租户、审计、AI 加密/审批/配额、管理端门禁 401/403/200、会话吊销)+ **5 个前端测试**(vitest)
 - `zig fmt` 全绿、零 TODO、优雅关闭、备份策略文档化
 
 ---
@@ -76,7 +76,7 @@
 
 | 层 | 技术 |
 | --- | --- |
-| 后端 | [Zig](https://ziglang.org) 0.17 · [zigmodu](https://github.com/chy3xyz/zigmodu) v0.20.1+(HTTP、安全、AI、resilience、Application 生命周期) · [zent](https://github.com/chy3xyz/zent) v0.67.0+(ORM、schema、迁移) |
+| 后端 | [Zig](https://ziglang.org) 0.17 · [zigmodu](https://github.com/chy3xyz/zigmodu) v0.39.18+(HTTP、安全、AI、resilience、Application 生命周期) · [zent](https://github.com/chy3xyz/zent) v0.96.0+(ORM、schema、迁移) |
 | 前端 | [SolidJS](https://www.solidjs.com) · TypeScript · [Rsbuild](https://rsbuild.dev) · [Tailwind CSS](https://tailwindcss.com) 4 · [DaisyUI](https://daisyui.com) · vitest |
 | 数据库 | SQLite(默认)· PostgreSQL(一个环境变量切换) |
 
@@ -182,7 +182,7 @@ cd web && npm install && npm run dev
 ## 🧪 测试
 
 ```bash
-zig build test                     # 35 个后端测试(内存 SQLite + Testkit HTTP)
+zig build test                     # 38 个后端测试(内存 SQLite + Testkit HTTP)
 cd web && npm run typecheck && npm test && npm run build   # vitest + 构建
 ```
 

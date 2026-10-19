@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Dependencies
+
+- **zent v0.91.0 → v0.96.0 + zigmodu v0.39.11 → v0.39.18** (git tag +
+  content-hash pins). No touchpoints for the three zent breaking items in
+  this codebase (PostgresDriver.cache reshaped — no direct cache setup
+  here; `CrudService.insertMany`/`upsertMany` now take explicit tenant_id —
+  CrudService unused; `cursorPage` rejects nullable cursor columns — not
+  used). Ride-along behavior: per-statement migration savepoints with new
+  `error.MigrationStatementRejected`, SQL comments stripped before
+  migration exec, raw `?` placeholders translatable via
+  `sql_dialect.translatePlaceholdersAlloc`. Clean-cache verified: 38/38
+  backend tests on the real new versions.
+
+### Added
+
+- **life feedback loop adopted** (zigmodu ≥ 0.39.14, agent-first issue &
+  release governance): `.life/` is now the machine-readable fact source
+  shared by AI agents and humans — same 14-state machine with enforced
+  transitions and automatic audit comments. Seeded: LI-0001 records the
+  zent AggregateBy SQLite TEXT-key coercion bug (source: agent,
+  fingerprinted; re-verified unfixed in v0.96.0); release 0.3.2 drafted
+  from the CHANGELOG section and published (immutable) to
+  `.life/feed/life.json` + `atom.xml`. Workflow documented in
+  development-guide §8.1; `zmodu ci --life` hook noted as future wiring
+  (this project runs GitHub Actions).
+
 ## [0.3.2] - 2026-10-12
 
 ### Dependencies
