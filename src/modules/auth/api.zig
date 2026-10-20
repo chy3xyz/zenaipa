@@ -113,7 +113,7 @@ pub fn AuthApi(comptime Service: type) type {
             };
         }
 
-        pub fn registerRoutes(self: *Self, group: *http.RouteGroup) !void {
+        pub fn registerRoutes(self: *Self, group: anytype) !void {
             // Public routes are rate-limited to blunt credential stuffing /
             // reset-token brute force.
             // per-IP 限流(攻击者无法耗尽全局桶误伤他人)。

@@ -60,7 +60,7 @@ pub fn UserApi(comptime Service: type) type {
             return .{ .svc = svc, .default_tenant_id = default_tenant_id, .audit = audit };
         }
 
-        pub fn registerRoutes(self: *Self, group: *http.RouteGroup) !void {
+        pub fn registerRoutes(self: *Self, group: anytype) !void {
             var g = try group.use(zigmodu.http.http_middleware.jwtAuthWithSecurity(&self.svc.sec.module));
             g = try g.use(mw.tokenVersionGuard(self.svc.sec, self.svc.store));
             try g.get("/users", listUsers, @ptrCast(@alignCast(self)));

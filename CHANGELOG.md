@@ -20,6 +20,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sql_dialect.translatePlaceholdersAlloc`. Clean-cache verified: 38/38
   backend tests on the real new versions.
 
+- **zigmodu v0.39.18 → v0.40.0 + zent v0.96.0 → v0.97.0** (git tag +
+  content-hash pins). zigmodu 0.40.0 removes `http.RouteGroup` and
+  `Server.group()`; migrated the 10 module `registerRoutes` entry points to
+  `anytype` scopes and `main.zig` plus all 3 test harnesses to
+  `http.Router(void).scope("/api/v1")` — runtime routes keep the same
+  contract as before (trie + scope middleware, outside the comptime
+  catalog). Health/metrics keep `Server.addRoute`. No touchpoints for
+  0.39.19's `SkillContext.fromHttp` removal (unused) or its AI/approval
+  changes. zent 0.97.0 is a pure package-DAG refactor (`zent.base` /
+  `zent.services` / `zent.migrate` are new names; export paths unchanged),
+  so no code change. LI-0001's `AggregateBy` TEXT-key coercion is still
+  unfixed in 0.97.0 (`readAggValue` still tries `getInt` first).
+  Clean-cache verified: 38/38 backend tests, build, lint-fmt/lint-size and
+  the e2e smoke (boot → probes → admin/login/info → graceful shutdown, no
+  panic/leak).
+
 ### Added
 
 - **life feedback loop adopted** (zigmodu ≥ 0.39.14, agent-first issue &

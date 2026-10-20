@@ -406,7 +406,10 @@ test "HTTP dispatch: public auth flow (register -> me) via Testkit" {
 
     var server = zigmodu.http.Server.init(std.testing.io, allocator, 0);
     defer server.deinit();
-    var g = server.group("/api/v1");
+    var app_state: void = {};
+    var router = zigmodu.http.Router(void).init(std.testing.io, allocator, &server, &app_state);
+    defer router.deinit();
+    var g = router.scope("/api/v1");
     try auth_api.registerRoutes(&g);
 
     var resp = try zigmodu.http.Testkit.dispatch(&server, .POST, "/api/v1/auth/register", "{\"name\":\"Tester\",\"email\":\"t@example.com\",\"password\":\"password123\"}");
@@ -597,7 +600,10 @@ test "admin-only endpoints reject missing/non-admin tokens" {
 
     var server = zigmodu.http.Server.init(std.testing.io, allocator, 0);
     defer server.deinit();
-    var g = server.group("/api/v1");
+    var app_state: void = {};
+    var router = zigmodu.http.Router(void).init(std.testing.io, allocator, &server, &app_state);
+    defer router.deinit();
+    var g = router.scope("/api/v1");
     var audit_api = audit.api.AuditApi(@TypeOf(audit_svc), @TypeOf(svc)).init(&audit_svc, &svc);
     try audit_api.registerRoutes(&g);
     var mt_api = mail_template.api.MailTemplateApi(@TypeOf(tsvc), @TypeOf(svc)).init(&tsvc, &svc);
@@ -898,7 +904,10 @@ test "session revocation: token_version bump invalidates old JWTs" {
 
     var server = zigmodu.http.Server.init(std.testing.io, allocator, 0);
     defer server.deinit();
-    var g = server.group("/api/v1");
+    var app_state: void = {};
+    var router = zigmodu.http.Router(void).init(std.testing.io, allocator, &server, &app_state);
+    defer router.deinit();
+    var g = router.scope("/api/v1");
     var guarded = try g.use(zigmodu.http.http_middleware.jwtAuthWithSecurity(&sec.module));
     guarded = try guarded.use(@import("middleware/auth.zig").tokenVersionGuard(&sec, &store));
     try guarded.get("/whoami", Whoami.h, null);

@@ -60,7 +60,7 @@ pub fn SystemApi(comptime CacheT: type, comptime TaskSvcT: type) type {
             };
         }
 
-        pub fn registerRoutes(self: *Self, group: *http.RouteGroup) !void {
+        pub fn registerRoutes(self: *Self, group: anytype) !void {
             var g = try group.use(zigmodu.http.http_middleware.jwtAuthWithSecurity(&self.users_svc.sec.module));
             g = try g.use(mw.tokenVersionGuard(self.users_svc.sec, self.users_svc.store));
             try g.get("/system/info", info, @ptrCast(@alignCast(self)));

@@ -104,7 +104,9 @@ const graph = zent.codegen.graph.buildGraph(&.{ tenant_model.Tenant, user_model.
 var order_store = order.persistence.OrderStore.init(allocator, store_env.client);
 var order_svc = order.service.OrderService.init(allocator, &order_store, ...);
 // ...
-var v1 = server.group("/api/v1");
+var app_state: void = {};
+var router = zigmodu.http.Router(void).init(io, allocator, &server, &app_state);
+var v1 = router.scope("/api/v1");
 try order.api.OrderApi(@TypeOf(order_svc)).init(&order_svc, ...).registerRoutes(&v1);
 ```
 
@@ -217,7 +219,7 @@ try tx.commit();
 
 ### 3.6 zent ≥ v0.30 新增能力(按需采用)
 
-当前基线 zent v0.96.0 + zigmodu v0.39.18,以下能力可直接用:
+当前基线 zent v0.97.0 + zigmodu v0.40.0,以下能力可直接用:
 
 - 业务键 upsert:`CreateBuilder.SaveOrUpdateOn(&.{"code"})` /
   `SaveIgnore()`(v0.30)——替代「exists 判断后 insert」,天然幂等
@@ -247,7 +249,7 @@ try tx.commit();
     ⚠️ `AggregateBy` 的**字符串分组键在 SQLite 上是坏的**:`readAggValue`
     先试 `getInt`,`sqlite3_column_int64` 把 TEXT 键强转为 `.int = 0`,
     各组计数会全部串零(PG 走纯文本协议 `parseInt` 失败后落到
-    `getText`,不受影响)。**v0.96.0 复查仍未修**(readAggValue 依旧
+    `getText`,不受影响)。**v0.97.0 复查仍未修**(readAggValue 依旧
     getInt 优先)。上游修复前,字符串分组的统计保持逐谓词
     `Count`(参考 task `countByStatus` 注释),整数分组键可放心用;
   - 按列 upsert 表达式:`SaveOrUpdateOnWith` + `UpsertSetExpr`
@@ -276,7 +278,7 @@ try tx.commit();
   - 视图/外键/漂移检测、连接池并发不变量、借出预算
     (`borrowWithTimeout`)等,详见 zent CHANGELOG——纯增量,用到再查。
 
-- zigmodu v0.15.37–v0.39.18 要点:
+- zigmodu v0.15.37–v0.40.0 要点:
   - **`http.UploadGuard`**(0.15.46,本项目 file 模块已接入):按字节
     嗅探判定文件类型,主动内容(SVG/HTML)改名也拒收;扩展名/格式
     白名单、扩展名↔内容一致性、单文件大小,判定顺序见其文档头;
@@ -285,6 +287,11 @@ try tx.commit();
   - RFC 7807 错误体全局开关(0.15.45,默认关闭,未启用);
   - `ctx.route_template` 指标标签统一带前导斜杠(0.15.46)——按旧形状
     写死的 dashboard 查询需同步;
+  - **v0.40.0 移除 `http.RouteGroup` / `Server.group()`**:运行时注册改用
+    `http.Router(void).scope(prefix)`(get/post/… 方法名不变,路由仍在
+    comptime catalog 之外);本项目 10 个模块的 `registerRoutes` 已改收
+    `anytype`,main 与 3 个测试 harness 改用 `Router(void)`。需要
+    auth/OpenAPI/权限门的路由必须走 `routes`/`mount`,不能用运行时 scope;
   - v0.16–v0.20 新增运行时底座(worker 监督/扇出、SagaOrchestrator
     崩溃续跑、ClusterView、架构引擎编译期图检查)——与本项目
     自建 task 队列定位重叠,按需单独评估,不在适配范围。
@@ -431,6 +438,6 @@ spec 见上游 `docs/superpowers/specs/2026-10-16-life-issue-release-design.md`)
   面向上游自带 CI runner;本项目用 GitHub Actions,接入留待需要时
   (runner 里构建 zmodu 后在失败步调用)。
 - `.life/` 整目录入库(事实源本身,含派生 feed);首次播种:LI-0001
-  记录 zent AggregateBy SQLite TEXT 键强转 bug(v0.96.0 复查仍未修),
+  记录 zent AggregateBy SQLite TEXT 键强转 bug(v0.97.0 复查仍未修),
   release 0.3.2 已 publish。
 

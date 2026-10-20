@@ -322,7 +322,13 @@ pub fn main(init: std.process.Init) !void {
     try server.addMiddleware(access_log.middleware());
     try server.addMiddleware(try zigmodu.http.http_middleware.cors(.{ .allow_origins = origins }));
 
-    var v1 = server.group("/api/v1");
+    // Runtime registration lives on Router.scope (Server.group was removed in
+    // zigmodu v0.40.0); these routes stay outside the comptime catalog, the
+    // same contract the old RouteGroup had.
+    var app_state: void = {};
+    var router = zigmodu.http.Router(void).init(io, allocator, &server, &app_state);
+    defer router.deinit();
+    var v1 = router.scope("/api/v1");
     try auth_api.registerRoutes(&v1);
     try user_api.registerRoutes(&v1);
     try task_api.registerRoutes(&v1);
