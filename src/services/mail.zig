@@ -177,7 +177,7 @@ const SmtpConnection = struct {
             else blk: {
                 const stream = self.stream orelse unreachable;
                 // std.Io.net.Stream.read 在 0.17.0 stable 上 std 自身破碎（ReadResult 解构编译断），
-                // 与上游 zigmodu v0.39.5 第 127 批同修法：阻塞 socket 读走 raw posix.read（0 → EOF）。
+                // 与上游 zmodu v0.39.5 第 127 批同修法：阻塞 socket 读走 raw posix.read（0 → EOF）。
                 break :blk try std.posix.read(stream.socket.handle, &one);
             };
             if (n == 0) return error.ConnectionClosed;

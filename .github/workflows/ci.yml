@@ -16,7 +16,7 @@ jobs:
       ZIG_VERSION: 0.17.0
     steps:
       - uses: actions/checkout@v4
-      # build.zig.zon pins zent/zigmodu by git tag + content hash; Zig fetches
+      # build.zig.zon pins zent/zmodu by git tag + content hash; Zig fetches
       # them directly, no sibling checkout needed.
       - name: Setup Zig
         shell: bash

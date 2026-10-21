@@ -1,7 +1,7 @@
 # Zenaipa 二次开发最佳实践
 
 本文面向在 zenaipa 全栈管理框架上扩展业务模块的开发者。它记录本仓库
-沉淀下来的架构约定、zent/zigmodu 用法、安全与性能规范,以及踩过的坑。
+沉淀下来的架构约定、zent/zmodu 用法、安全与性能规范,以及踩过的坑。
 
 配套阅读:`docs/streaming.md`(AI 流式契约)、`docs/backup.md`(备份剧本)、
 zent 仓库 `docs/BEST_PRACTICES.md`(ORM 层通用规范)。
@@ -14,7 +14,7 @@ zent 仓库 `docs/BEST_PRACTICES.md`(ORM 层通用规范)。
 HTTP 请求
   │
   ▼
-api.zig(HTTP 路由/鉴权/参数绑定/DTO)   ← zigmodu.http
+api.zig(HTTP 路由/鉴权/参数绑定/DTO)   ← zmodu.http
   │
   ▼
 service.zig(领域逻辑/校验/编排)          ← 无 HTTP、无 SQL
@@ -45,7 +45,7 @@ src/modules/order/
   persistence.zig  OrderStore + DTO(OrderRow / OrderListResult)+ 本模块 infos
   service.zig      领域服务(校验、编排),无 HTTP/SQL
   api.zig          pub fn OrderApi(comptime Service: type) type + registerRoutes
-  module.zig       zigmodu.api.Module 元数据(生命周期钩子为 no-op)
+  module.zig       zmodu.api.Module 元数据(生命周期钩子为 no-op)
   root.zig         barrel:pub const model/persistence/service/api/module
 ```
 
@@ -105,7 +105,7 @@ var order_store = order.persistence.OrderStore.init(allocator, store_env.client)
 var order_svc = order.service.OrderService.init(allocator, &order_store, ...);
 // ...
 var app_state: void = {};
-var router = zigmodu.http.Router(void).init(io, allocator, &server, &app_state);
+var router = zmodu.http.Router(void).init(io, allocator, &server, &app_state);
 var v1 = router.scope("/api/v1");
 try order.api.OrderApi(@TypeOf(order_svc)).init(&order_svc, ...).registerRoutes(&v1);
 ```
@@ -125,7 +125,7 @@ main.zig:158-168);不要在模块内直接 `@import` 其他模块的 store 单�
 
 ### 2.5 注册模块元数据
 
-`module.zig` 导出 `zigmodu.api.Module` 元数据并在 `main.zig` 传入
+`module.zig` 导出 `zmodu.api.Module` 元数据并在 `main.zig` 传入
 `Application.init`;HTTP 路由不进模块生命周期,由 main.zig 手工挂载
 (这是本项目的既定模式)。
 
@@ -219,7 +219,7 @@ try tx.commit();
 
 ### 3.6 zent ≥ v0.30 新增能力(按需采用)
 
-当前基线 zent v0.97.0 + zigmodu v0.40.0,以下能力可直接用:
+当前基线 zent v0.97.0 + zmodu v0.42.0(0.42.0 起 zigmodu 改名 zmodu:依赖键/模块名/@import/env 前缀全换,兼容别名已删),以下能力可直接用:
 
 - 业务键 upsert:`CreateBuilder.SaveOrUpdateOn(&.{"code"})` /
   `SaveIgnore()`(v0.30)——替代「exists 判断后 insert」,天然幂等
@@ -233,7 +233,7 @@ try tx.commit();
 - 运行时查询改写:zent Interceptor(v0.32,`UseInterceptor` +
   `view.whereEq("tenant_id", …)`)——适合未来把租户注入从手写谓词
   收敛到 client 级;本项目当前仍用手写谓词约定(§4),切换需单独评估;
-- zigmodu 侧:`bindJsonLoose`(0.15.26,camelCase/null 宽松绑定)——
+- zmodu 侧:`bindJsonLoose`(0.15.26,camelCase/null 宽松绑定)——
   **本项目 16 个写接口已全部替换**(缺失字段回退声明默认值,非空字段
   空串由 service 层校验兜住);另有 `insertOmitNulls`/`updatePartial`
   (0.15.25)、INSERT 回填自增 id(0.15.27)、Redis 分布式限流(0.15.28)、
@@ -278,7 +278,7 @@ try tx.commit();
   - 视图/外键/漂移检测、连接池并发不变量、借出预算
     (`borrowWithTimeout`)等,详见 zent CHANGELOG——纯增量,用到再查。
 
-- zigmodu v0.15.37–v0.40.0 要点:
+- zmodu v0.15.37–v0.40.0 要点:
   - **`http.UploadGuard`**(0.15.46,本项目 file 模块已接入):按字节
     嗅探判定文件类型,主动内容(SVG/HTML)改名也拒收;扩展名/格式
     白名单、扩展名↔内容一致性、单文件大小,判定顺序见其文档头;
@@ -366,7 +366,7 @@ try tx.commit();
   }
   ```
 
-- HTTP 层用 `zigmodu.http.Testkit.dispatch` 不开 socket,同套
+- HTTP 层用 `zmodu.http.Testkit.dispatch` 不开 socket,同套
   store/svc 装配后 `registerRoutes` 再 dispatch,断言状态码与响应体。
 - 约定:
   - 新增持久化方法务必配往返断言(写入 → 读回 → 释放);
@@ -413,12 +413,12 @@ try tx.commit();
   `chore(release): vX.Y.Z` 提交 → `git tag vX.Y.Z` → push → 
   `gh release create`(notes 取 CHANGELOG)。
 
-### 8.1 life 反馈闭环(面向 agent 开发,zigmodu ≥ 0.39.14)
+### 8.1 life 反馈闭环(面向 agent 开发,zmodu ≥ 0.39.14)
 
-仓库的 `.life/` 是机器可读的 issue/release 事实源(zigmodu life 系统,
+仓库的 `.life/` 是机器可读的 issue/release 事实源(zmodu life 系统,
 spec 见上游 `docs/superpowers/specs/2026-10-16-life-issue-release-design.md`),
 供 AI agent 与人共用同一状态机(14 态,服务端式强制校验,每次 transition
-自动落审计评论)。CLI 用 zigmodu 检出的 `zig-out/bin/zmodu`(或自行
+自动落审计评论)。CLI 用 zmodu 检出的 `zig-out/bin/zmodu`(或自行
 `zig build` 重建):
 
 - **agent/用户反馈进来** → `zmodu life issue new --title T --category bug

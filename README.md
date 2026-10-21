@@ -7,7 +7,7 @@
 Ship your internal console faster than your coffee gets cold.
 
 [![Zig](https://img.shields.io/badge/Zig-0.17-orange?logo=zig&logoColor=white)](https://ziglang.org)
-[![zigmodu](https://img.shields.io/badge/zigmodu-v0.40.0-blue)](https://github.com/chy3xyz/zigmodu)
+[![zmodu](https://img.shields.io/badge/zmodu-v0.42.0-blue)](https://github.com/chy3xyz/zmodu)
 [![zent](https://img.shields.io/badge/zent-ORM-6b46c1)](https://github.com/chy3xyz/zent)
 [![SolidJS](https://img.shields.io/badge/Frontend-SolidJS-2c4f7c?logo=solid&logoColor=white)](https://www.solidjs.com)
 [![Tests](https://img.shields.io/badge/tests-38%20backend%20%2B%205%20frontend-green)]()
@@ -61,8 +61,8 @@ Ship your internal console faster than your coffee gets cold.
 - **Skills** — LLM-callable platform tools: user search, task stats, audit search, tenant list (read-only) + `notify.send` (write, human-approved)
 - **Chat** — per-user sessions with persisted history, **reasoning-chain display** (DeepSeek-R1 etc.)
 - **Human-in-the-loop** — approval queue, approve executes the action
-- **Governance** — rolling 24h quota, 4-way concurrency bulkhead,**circuit breaker** (5-failure → 60s OPEN + half-open probe), provider health check, run audit with the **actual model** + **per-run usage snapshot** (tokens/steps/tool calls via `Metrics.toStats()`, zigmodu v0.15.17), Prometheus AI metrics
-- **Workflow** — read-only health-report orchestration via zigmodu.ai
+- **Governance** — rolling 24h quota, 4-way concurrency bulkhead,**circuit breaker** (5-failure → 60s OPEN + half-open probe), provider health check, run audit with the **actual model** + **per-run usage snapshot** (tokens/steps/tool calls via `Metrics.toStats()`, zmodu v0.15.17), Prometheus AI metrics
+- **Workflow** — read-only health-report orchestration via zmodu.ai
 
 ### 💎 Engineering quality
 - Schema-as-code migrations (auto at startup), SQLite ↔ PostgreSQL via one env var
@@ -76,7 +76,7 @@ Ship your internal console faster than your coffee gets cold.
 
 | Layer | Technology |
 | --- | --- |
-| Backend | [Zig](https://ziglang.org) 0.17 · [zigmodu](https://github.com/chy3xyz/zigmodu) v0.40.0+ (HTTP, security, AI, resilience, Application lifecycle) · [zent](https://github.com/chy3xyz/zent) v0.97.0+ (ORM, schema, migrations) |
+| Backend | [Zig](https://ziglang.org) 0.17 · [zmodu](https://github.com/chy3xyz/zmodu) v0.42.0+ (HTTP, security, AI, resilience, Application lifecycle) · [zent](https://github.com/chy3xyz/zent) v0.97.0+ (ORM, schema, migrations) |
 | Frontend | [SolidJS](https://www.solidjs.com) · TypeScript · [Rsbuild](https://rsbuild.dev) · [Tailwind CSS](https://tailwindcss.com) 4 · [DaisyUI](https://daisyui.com) · vitest |
 | Database | SQLite (default) · PostgreSQL (one env var) |
 
@@ -88,14 +88,14 @@ Ship your internal console faster than your coffee gets cold.
 Browser (SolidJS SPA)
    │  /api/v1  (JSON envelope: { code, msg, data })
    ▼
-Zig HTTP server (zigmodu, async fibers)
+Zig HTTP server (zmodu, async fibers)
    │  security headers → access log → CORS → JWT (tenant) → token-version guard
    ▼
 Module APIs ──► Services ──► Persistence (zent, type-safe) ──► SQLite / PostgreSQL
    │
    ├── Task Dispatcher (background thread)
    │     └── durable queue · mail.send handler · housekeeping (tokens/audit)
-   └── AI Agent (zigmodu.ai)
+   └── AI Agent (zmodu.ai)
          └── SkillRegistry → platform skills → human approval → run audit
 ```
 
@@ -192,7 +192,7 @@ cd web && npm run typecheck && npm test && npm run build   # vitest + build
 - **CI**: GitHub Actions — `zig fmt --check`, `zig build test`, frontend typecheck/tests/build.
 - **Graceful shutdown**: SIGTERM/SIGINT drains in-flight requests, then stops cleanly.
 - **Backups**: [`docs/backup.md`](docs/backup.md) — online SQLite `.backup`, `pg_dump`/restore, uploads snapshots, retention schedule.
-- **Dev guide**: [`docs/development-guide.md`](docs/development-guide.md) — how to add a business module (zent/zigmodu conventions, transactions, security, performance, testing pitfalls).
+- **Dev guide**: [`docs/development-guide.md`](docs/development-guide.md) — how to add a business module (zent/zmodu conventions, transactions, security, performance, testing pitfalls).
 - **Security checklist**: explicit `ZENAIPA_JWT_SECRET` (mandatory on PostgreSQL), `ZENAIPA_AI_KEY_SECRET` for AI, `/metrics` IP allow-list, audit retention.
 
 ---
@@ -202,10 +202,10 @@ cd web && npm run typecheck && npm test && npm run build   # vitest + build
 | Status | Item |
 | --- | --- |
 | ✅ Done | AI assistant (providers/skills/chat/approvals/workflow/quota), audit log + CSV, dashboard, email templates, per-IP rate limiting, **session revocation**, file allow-list, graceful shutdown, Docker/CI, frontend tests, theme toggle |
-| ✅ Done | **Streaming chat** — Agent `chatStream` + `on_delta` (zigmodu v0.15.16); SSE reasoning/delta/done feed with typing effect, JSON fallback |
-| ✅ Done | **Run usage audit** — zigmodu v0.15.17 `Metrics.toStats()`; every AI run persists tokens/steps/tool-call usage, admin runs table shows it |
-| ✅ Done | **Streaming tool-JSON fix** — zigmodu v0.15.18 (`b28444a`); SkillRegistry tools_json now emits valid JSON (extra `}` removed) so DeepSeek/OpenAI no longer reject tool schemas with 400 → `ProviderError` in streaming chat |
-| ✅ Done | **Deps at latest, pinned by git hash** — zigmodu v0.40.0 + zent v0.97.0 locked via `git+https` URL + content hash (no sibling checkout needed); `bindJsonLoose` adopted across all 16 write endpoints; schema merged to a single `buildGraph` per zent UPGRADING §7a |
+| ✅ Done | **Streaming chat** — Agent `chatStream` + `on_delta` (zmodu v0.15.16); SSE reasoning/delta/done feed with typing effect, JSON fallback |
+| ✅ Done | **Run usage audit** — zmodu v0.15.17 `Metrics.toStats()`; every AI run persists tokens/steps/tool-call usage, admin runs table shows it |
+| ✅ Done | **Streaming tool-JSON fix** — zmodu v0.15.18 (`b28444a`); SkillRegistry tools_json now emits valid JSON (extra `}` removed) so DeepSeek/OpenAI no longer reject tool schemas with 400 → `ProviderError` in streaming chat |
+| ✅ Done | **Deps at latest, pinned by git hash** — zmodu v0.42.0 (renamed from zigmodu) + zent v0.97.0 locked via `git+https` URL + content hash (no sibling checkout needed); `bindJsonLoose` adopted across all 16 write endpoints; schema merged to a single `buildGraph` per zent UPGRADING §7a |
 
 ---
 

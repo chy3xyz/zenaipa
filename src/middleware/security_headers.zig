@@ -1,8 +1,8 @@
 //! Security response headers (HSTS, X-Frame-Options, nosniff, referrer
-//! policy, download/ DNS protections) — zigmodu defaults, one call.
+//! policy, download/ DNS protections) — zmodu defaults, one call.
 
-const zigmodu = @import("zigmodu");
-const http = zigmodu.http;
+const zmodu = @import("zmodu");
+const http = zmodu.http;
 
 pub fn securityHeaders() !http.Middleware {
     return try http.http_middleware.securityHeaders(null);

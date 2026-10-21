@@ -1,9 +1,9 @@
 //! Unit tests for zenaipa. DB-backed tests use an in-memory zent store;
-//! HTTP-layer tests dispatch through zigmodu's Testkit without a socket.
+//! HTTP-layer tests dispatch through zmodu's Testkit without a socket.
 //! Tenant tests cover default bootstrap, JWT aud binding and row isolation.
 
 const std = @import("std");
-const zigmodu = @import("zigmodu");
+const zmodu = @import("zmodu");
 const zent = @import("zent");
 const db_mod = @import("db.zig");
 const schema = @import("schema.zig");
@@ -55,21 +55,21 @@ fn openMemory(allocator: std.mem.Allocator) !db_mod.StoreEnv(schema.infos, .{
     }).open(allocator, .sqlite, ":memory:");
 }
 
-test "health: zigmodu + zent importable together" {
-    _ = zigmodu;
+test "health: zmodu + zent importable together" {
+    _ = zmodu;
     _ = zent;
     try std.testing.expect(true);
 }
 
 test "AppSecurity signs and verifies a token" {
     const allocator = std.testing.allocator;
-    var sec = zigmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
+    var sec = zmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
     const token = try sec.generateToken("7", &.{"admin"});
     defer allocator.free(token);
     const payload = try sec.module.verifyToken(token);
     defer sec.module.freePayload(payload);
     try std.testing.expectEqualStrings("7", payload.sub);
-    try std.testing.expect(zigmodu.security.SecurityModule.hasRole(payload, "admin"));
+    try std.testing.expect(zmodu.security.SecurityModule.hasRole(payload, "admin"));
 }
 
 test "sqlite store query prepares and runs standalone" {
@@ -108,7 +108,7 @@ test "service updateProfile keeps fields and normalizes email" {
     var env = try openMemory(allocator);
     defer env.deinit();
     var store = user.persistence.UserStore.init(allocator, env.client);
-    var sec = zigmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
+    var sec = zmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
     var svc = user.service.UserService.init(&store, &sec, std.testing.io, 3600, 86400);
 
     const id = try store.createUser("Alice", "alice@example.com", "hash", false, false, 1, 100);
@@ -139,7 +139,7 @@ test "emailTakenByOther detects a conflicting email" {
     var env = try openMemory(allocator);
     defer env.deinit();
     var store = user.persistence.UserStore.init(allocator, env.client);
-    var sec = zigmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
+    var sec = zmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
     var svc = user.service.UserService.init(&store, &sec, std.testing.io, 3600, 86400);
 
     const alice_id = try store.createUser("Alice", "alice@example.com", "hash", false, false, 1, 100);
@@ -155,7 +155,7 @@ test "password token lifecycle: issue, validate, expired cleanup" {
     var env = try openMemory(allocator);
     defer env.deinit();
     var store = user.persistence.UserStore.init(allocator, env.client);
-    var sec = zigmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
+    var sec = zmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
     var svc = user.service.UserService.init(&store, &sec, std.testing.io, 3600, 86400);
 
     _ = try store.createUser("Alice", "alice@example.com", "hash", false, false, 1, 100);
@@ -167,7 +167,7 @@ test "password token lifecycle: issue, validate, expired cleanup" {
 
     // A stale token (far in the past) is purged, the fresh one survives.
     _ = try store.createPasswordToken(info.user_id, "stale-hash", 1000);
-    const now = zigmodu.time.wallClockSeconds(std.testing.io);
+    const now = zmodu.time.wallClockSeconds(std.testing.io);
     try store.deleteExpiredPasswordTokens(info.user_id, now, 3600);
     const latest = (try store.getLatestPasswordToken(info.user_id)).?;
     defer latest.free(allocator);
@@ -182,7 +182,7 @@ test "email verification lifecycle: issue, verify, purge" {
     var env = try openMemory(allocator);
     defer env.deinit();
     var store = user.persistence.UserStore.init(allocator, env.client);
-    var sec = zigmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
+    var sec = zmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
     var svc = user.service.UserService.init(&store, &sec, std.testing.io, 3600, 86400);
 
     const id = try store.createUser("Alice", "alice@example.com", "hash", false, false, 1, 100);
@@ -200,7 +200,7 @@ test "changePassword verifies the current password" {
     var env = try openMemory(allocator);
     defer env.deinit();
     var store = user.persistence.UserStore.init(allocator, env.client);
-    var sec = zigmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
+    var sec = zmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
     var svc = user.service.UserService.init(&store, &sec, std.testing.io, 3600, 86400);
     // 存量口令必须是真实可解码的 hash,"口令不对"才会走 InvalidCredentials。
     const stored = try sec.module.hashPassword("current-password-1");
@@ -389,9 +389,9 @@ test "HTTP dispatch: public auth flow (register -> me) via Testkit" {
     var env = try openMemory(allocator);
     defer env.deinit();
     var store = user.persistence.UserStore.init(allocator, env.client);
-    var sec = zigmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "testkit-secret" });
+    var sec = zmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "testkit-secret" });
     var svc = user.service.UserService.init(&store, &sec, std.testing.io, 3600, 86400);
-    var registry = zigmodu.RateLimiterRegistry.init(allocator, 100, 1);
+    var registry = zmodu.RateLimiterRegistry.init(allocator, 100, 1);
     defer registry.deinit();
     var mailer = mail.Mailer.init(allocator, std.testing.io, "", 587, "", "", "test@localhost", true, false);
     var task_store = task.persistence.TaskStore.init(allocator, env.client);
@@ -404,15 +404,15 @@ test "HTTP dispatch: public auth flow (register -> me) via Testkit" {
     var template_svc = mail_template.service.MailTemplateService.init(allocator, std.testing.io, &template_store);
     var auth_api = auth.api.AuthApi(@TypeOf(svc)).init(&svc, "http://localhost:3001", &registry, &mailer, &task_svc, &notify_svc, &audit_svc, &template_svc, 1);
 
-    var server = zigmodu.http.Server.init(std.testing.io, allocator, 0);
+    var server = zmodu.http.Server.init(std.testing.io, allocator, 0);
     defer server.deinit();
     var app_state: void = {};
-    var router = zigmodu.http.Router(void).init(std.testing.io, allocator, &server, &app_state);
+    var router = zmodu.http.Router(void).init(std.testing.io, allocator, &server, &app_state);
     defer router.deinit();
     var g = router.scope("/api/v1");
     try auth_api.registerRoutes(&g);
 
-    var resp = try zigmodu.http.Testkit.dispatch(&server, .POST, "/api/v1/auth/register", "{\"name\":\"Tester\",\"email\":\"t@example.com\",\"password\":\"password123\"}");
+    var resp = try zmodu.http.Testkit.dispatch(&server, .POST, "/api/v1/auth/register", "{\"name\":\"Tester\",\"email\":\"t@example.com\",\"password\":\"password123\"}");
     defer resp.deinit(allocator);
     try std.testing.expectEqual(@as(u16, 201), resp.status_code);
     try std.testing.expect(std.mem.indexOf(u8, resp.body, "\"code\":0") != null);
@@ -449,7 +449,7 @@ test "register binds tenant and JWT aud carries it" {
     var env = try openMemory(allocator);
     defer env.deinit();
     var store = user.persistence.UserStore.init(allocator, env.client);
-    var sec = zigmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
+    var sec = zmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "test-secret" });
     var svc = user.service.UserService.init(&store, &sec, std.testing.io, 3600, 86400);
 
     var session = try svc.register(allocator, "Alice", "alice@example.com", "password123", false, 7);
@@ -581,7 +581,7 @@ test "admin-only endpoints reject missing/non-admin tokens" {
     var env = try openMemory(allocator);
     defer env.deinit();
     var store = user.persistence.UserStore.init(allocator, env.client);
-    var sec = zigmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "testkit-secret" });
+    var sec = zmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "testkit-secret" });
     var svc = user.service.UserService.init(&store, &sec, std.testing.io, 3600, 86400);
 
     var audit_store = audit.persistence.AuditStore.init(allocator, env.client);
@@ -598,10 +598,10 @@ test "admin-only endpoints reject missing/non-admin tokens" {
     const admin_token = try sec.module.generateTokenWithTenant(try std.fmt.bufPrint(&uid_buf, "{d}", .{admin_uid}), &.{"admin"}, "1");
     defer allocator.free(admin_token);
 
-    var server = zigmodu.http.Server.init(std.testing.io, allocator, 0);
+    var server = zmodu.http.Server.init(std.testing.io, allocator, 0);
     defer server.deinit();
     var app_state: void = {};
-    var router = zigmodu.http.Router(void).init(std.testing.io, allocator, &server, &app_state);
+    var router = zmodu.http.Router(void).init(std.testing.io, allocator, &server, &app_state);
     defer router.deinit();
     var g = router.scope("/api/v1");
     var audit_api = audit.api.AuditApi(@TypeOf(audit_svc), @TypeOf(svc)).init(&audit_svc, &svc);
@@ -610,27 +610,27 @@ test "admin-only endpoints reject missing/non-admin tokens" {
     try mt_api.registerRoutes(&g);
 
     // 无 token → 401。
-    var anon = try zigmodu.http.Testkit.dispatch(&server, .GET, "/api/v1/audit-logs", null);
+    var anon = try zmodu.http.Testkit.dispatch(&server, .GET, "/api/v1/audit-logs", null);
     defer anon.deinit(allocator);
     try std.testing.expectEqual(@as(u16, 401), anon.status_code);
 
     // 普通用户 token → 403(后端再次校验 admin,而非仅依赖前端隐藏)。
     var hdr: [512]u8 = undefined;
-    var denied = try zigmodu.http.Testkit.dispatchOpts(&server, .GET, "/api/v1/audit-logs", .{
+    var denied = try zmodu.http.Testkit.dispatchOpts(&server, .GET, "/api/v1/audit-logs", .{
         .headers = &.{.{ "authorization", try std.fmt.bufPrint(&hdr, "Bearer {s}", .{plain_token}) }},
     });
     defer denied.deinit(allocator);
     try std.testing.expectEqual(@as(u16, 403), denied.status_code);
 
     // admin token → 200。
-    var allowed = try zigmodu.http.Testkit.dispatchOpts(&server, .GET, "/api/v1/audit-logs", .{
+    var allowed = try zmodu.http.Testkit.dispatchOpts(&server, .GET, "/api/v1/audit-logs", .{
         .headers = &.{.{ "authorization", try std.fmt.bufPrint(&hdr, "Bearer {s}", .{admin_token}) }},
     });
     defer allowed.deinit(allocator);
     try std.testing.expectEqual(@as(u16, 200), allowed.status_code);
 
     // 模板 PUT 无 token → 401。
-    var anon_put = try zigmodu.http.Testkit.dispatch(&server, .PUT, "/api/v1/email-templates/verify_email", null);
+    var anon_put = try zmodu.http.Testkit.dispatch(&server, .PUT, "/api/v1/email-templates/verify_email", null);
     defer anon_put.deinit(allocator);
     try std.testing.expectEqual(@as(u16, 401), anon_put.status_code);
 }
@@ -796,7 +796,7 @@ test "ai: run quota counts within rolling window + health workflow" {
 }
 
 test "ai: usageDelta computes per-run AgentMetrics increment" {
-    const Stats = zigmodu.ai.AgentMetrics.Stats;
+    const Stats = zmodu.ai.AgentMetrics.Stats;
     const before = Stats{ .runs = 5, .steps = 10, .tool_calls = 3, .tool_errors = 1, .tool_denied = 0, .max_steps_hits = 0, .budget_exhausted = 0, .canceled = 0 };
     const after = Stats{ .runs = 6, .steps = 13, .tool_calls = 5, .tool_errors = 2, .tool_denied = 1, .max_steps_hits = 0, .budget_exhausted = 0, .canceled = 1 };
     const d = ai.service.usageDelta(before, after);
@@ -888,11 +888,11 @@ test "session revocation: token_version bump invalidates old JWTs" {
     var env = try openMemory(allocator);
     defer env.deinit();
     var store = user.persistence.UserStore.init(allocator, env.client);
-    var sec = zigmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "testkit-secret" });
+    var sec = zmodu.security.AppSecurity.init(allocator, std.testing.io, .{ .jwt_secret = "testkit-secret" });
     const uid = try store.createUser("Alice", "a@x.com", "hash", false, false, 1, 100);
 
     const Whoami = struct {
-        fn h(ctx: *zigmodu.http.Context) !void {
+        fn h(ctx: *zmodu.http.Context) !void {
             const mw_mod = @import("middleware/auth.zig");
             const uid_ = mw_mod.authUserId(ctx) orelse {
                 try ctx.sendErrorResponse(401, 401, "未登录或登录已过期");
@@ -902,13 +902,13 @@ test "session revocation: token_version bump invalidates old JWTs" {
         }
     };
 
-    var server = zigmodu.http.Server.init(std.testing.io, allocator, 0);
+    var server = zmodu.http.Server.init(std.testing.io, allocator, 0);
     defer server.deinit();
     var app_state: void = {};
-    var router = zigmodu.http.Router(void).init(std.testing.io, allocator, &server, &app_state);
+    var router = zmodu.http.Router(void).init(std.testing.io, allocator, &server, &app_state);
     defer router.deinit();
     var g = router.scope("/api/v1");
-    var guarded = try g.use(zigmodu.http.http_middleware.jwtAuthWithSecurity(&sec.module));
+    var guarded = try g.use(zmodu.http.http_middleware.jwtAuthWithSecurity(&sec.module));
     guarded = try guarded.use(@import("middleware/auth.zig").tokenVersionGuard(&sec, &store));
     try guarded.get("/whoami", Whoami.h, null);
 
@@ -919,14 +919,14 @@ test "session revocation: token_version bump invalidates old JWTs" {
     const auth_header = try std.fmt.bufPrint(&hdr, "Bearer {s}", .{token});
 
     // 版本未递增 → 正常访问。
-    var ok = try zigmodu.http.Testkit.dispatchOpts(&server, .GET, "/api/v1/whoami", .{ .headers = &.{.{ "authorization", auth_header }} });
+    var ok = try zmodu.http.Testkit.dispatchOpts(&server, .GET, "/api/v1/whoami", .{ .headers = &.{.{ "authorization", auth_header }} });
     defer ok.deinit(allocator);
     try std.testing.expectEqual(@as(u16, 200), ok.status_code);
 
     // 改密/踢下线(版本 +1)→ 旧 token 立即失效。
-    const now = zigmodu.time.wallClockSeconds(std.testing.io);
+    const now = zmodu.time.wallClockSeconds(std.testing.io);
     try store.bumpTokenVersion(uid, now);
-    var denied = try zigmodu.http.Testkit.dispatchOpts(&server, .GET, "/api/v1/whoami", .{ .headers = &.{.{ "authorization", auth_header }} });
+    var denied = try zmodu.http.Testkit.dispatchOpts(&server, .GET, "/api/v1/whoami", .{ .headers = &.{.{ "authorization", auth_header }} });
     defer denied.deinit(allocator);
     try std.testing.expectEqual(@as(u16, 401), denied.status_code);
 }

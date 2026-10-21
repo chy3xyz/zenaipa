@@ -7,9 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Dependencies
+### Breaking (upstream rename)
 
-- **zent v0.91.0 → v0.96.0 + zigmodu v0.39.11 → v0.39.18** (git tag +
+- **zigmodu renamed to zmodu** (upstream v0.42.0 removed the compat alias):
+  dependency key, module name, every `@import("zigmodu")` →
+  `@import("zmodu")`, and the `zigmodu_dep` variables in build.zig are now
+  `zmodu` (40 source files, mechanical). Pins moved to
+  `git+https://github.com/chy3xyz/zmodu?ref=v0.42.0`, hash prefix `zmodu-`.
+  `ZIGMODU_*` env fallbacks dropped upstream — none were used here.
+
+## [0.3.2] + zigmodu v0.39.11 → v0.39.18** (git tag +
   content-hash pins). No touchpoints for the three zent breaking items in
   this codebase (PostgresDriver.cache reshaped — no direct cache setup
   here; `CrudService.insertMany`/`upsertMany` now take explicit tenant_id —

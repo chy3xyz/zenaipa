@@ -1,4 +1,4 @@
-//! zenaipa — a production-grade admin framework built on zigmodu + zent.
+//! zenaipa — a production-grade admin framework built on zmodu + zent.
 //!
 //! Single binary serves the JSON admin API; the Solid SPA in `web/`
 //! talks to it over `/api/v1`. Run:
@@ -13,7 +13,7 @@
 //!   headers, health/ready probes, runtime diagnostics.
 
 const std = @import("std");
-const zigmodu = @import("zigmodu");
+const zmodu = @import("zmodu");
 const zent = @import("zent");
 const build_info = @import("build_info");
 const config_mod = @import("config.zig");
@@ -61,7 +61,7 @@ const CleanupCtx = struct {
 
 fn jobTokensCleanup(ctx: ?*anyopaque) void {
     const c: *CleanupCtx = @ptrCast(@alignCast(ctx orelse return));
-    const now = zigmodu.time.wallClockSeconds(c.io);
+    const now = zmodu.time.wallClockSeconds(c.io);
     _ = c.user_store.purgeExpiredPasswordTokens(now, c.password_token_max_age) catch |err| {
         std.log.err("[cleanup] tokens.cleanup 清理过期密码重置令牌失败: {s}", .{@errorName(err)});
     };
@@ -72,7 +72,7 @@ fn jobTokensCleanup(ctx: ?*anyopaque) void {
 
 fn jobNotifyPrune(ctx: ?*anyopaque) void {
     const c: *CleanupCtx = @ptrCast(@alignCast(ctx orelse return));
-    const now = zigmodu.time.wallClockSeconds(c.io);
+    const now = zmodu.time.wallClockSeconds(c.io);
     _ = c.notify_store.purgeOlderThan(now, c.notification_max_age) catch |err| {
         std.log.err("[cleanup] notify.prune 清理过期通知失败: {s}", .{@errorName(err)});
     };
@@ -80,7 +80,7 @@ fn jobNotifyPrune(ctx: ?*anyopaque) void {
 
 fn jobAuditPrune(ctx: ?*anyopaque) void {
     const c: *CleanupCtx = @ptrCast(@alignCast(ctx orelse return));
-    const now = zigmodu.time.wallClockSeconds(c.io);
+    const now = zmodu.time.wallClockSeconds(c.io);
     _ = c.audit_store.purgeOlderThan(now, c.audit_retention_seconds) catch |err| {
         std.log.err("[cleanup] audit.prune 清理过期审计日志失败: {s}", .{@errorName(err)});
     };
@@ -94,11 +94,11 @@ pub fn main(init: std.process.Init) !void {
     // 生产形态(postgres / ZENAIPA_ENV=production)启动预检 fail-closed:
     // 默认 JWT 密钥 = 完全认证绕过;默认 CORS "*" 暴露全接口。拒绝启动而非降级。
     if (cfg.isProdLike()) {
-        var env_ctx = zigmodu.Preflight.EnvCheck.fromMap(init.environ_map, &.{"ZENAIPA_JWT_SECRET"});
-        var secret_ctx = zigmodu.Preflight.SecretCheck{ .secret = cfg.jwt_secret, .min_len = 16 };
-        var report = zigmodu.Preflight.run(allocator, &.{
-            zigmodu.Preflight.envCheck(&env_ctx),
-            zigmodu.Preflight.secretCheck(&secret_ctx),
+        var env_ctx = zmodu.Preflight.EnvCheck.fromMap(init.environ_map, &.{"ZENAIPA_JWT_SECRET"});
+        var secret_ctx = zmodu.Preflight.SecretCheck{ .secret = cfg.jwt_secret, .min_len = 16 };
+        var report = zmodu.Preflight.run(allocator, &.{
+            zmodu.Preflight.envCheck(&env_ctx),
+            zmodu.Preflight.secretCheck(&secret_ctx),
         });
         defer report.deinit();
         report.log();
@@ -147,7 +147,7 @@ pub fn main(init: std.process.Init) !void {
 
     // ── Domain services ──
     var store = user.persistence.UserStore.init(allocator, store_env.client);
-    var sec = zigmodu.security.AppSecurity.init(allocator, io, .{
+    var sec = zmodu.security.AppSecurity.init(allocator, io, .{
         .jwt_secret = cfg.jwt_secret,
         .token_expiry_seconds = cfg.token_expiry_seconds,
     });
@@ -206,7 +206,7 @@ pub fn main(init: std.process.Init) !void {
     defer ai_svc.deinit();
 
     // ── ZigModu module lifecycle (Application API: scan + validate + start/stop) ──
-    var app = try zigmodu.Application.init(io, allocator, "zenaipa", .{
+    var app = try zmodu.Application.init(io, allocator, "zenaipa", .{
         tenant.module,
         user.module,
         auth.module,
@@ -271,7 +271,7 @@ pub fn main(init: std.process.Init) !void {
 
     // ── HTTP API ──
     // per-IP 登录限流(而非全局单桶):每个客户端独立 20 token / 1 补。
-    var login_registry = zigmodu.RateLimiterRegistry.init(allocator, 20, 1);
+    var login_registry = zmodu.RateLimiterRegistry.init(allocator, 20, 1);
     defer login_registry.deinit();
 
     var user_api = user.api.UserApi(@TypeOf(user_svc)).init(&user_svc, default_tenant_id, &audit_svc);
@@ -292,14 +292,14 @@ pub fn main(init: std.process.Init) !void {
         &notify_store,
         &tenant_store,
         io,
-        zigmodu.time.wallClockSeconds(io),
+        zmodu.time.wallClockSeconds(io),
         @tagName(kind),
         cfg.smtp_host.len > 0,
         cfg.mail_console,
         module_count,
     );
 
-    var server = zigmodu.http.Server.initWithConfig(io, allocator, .{
+    var server = zmodu.http.Server.initWithConfig(io, allocator, .{
         .port = cfg.http_port,
         .name = "zenaipa",
         .max_body_size = cfg.upload_max_bytes + 64 * 1024,
@@ -316,17 +316,17 @@ pub fn main(init: std.process.Init) !void {
     var access_log = access_log_mod.AccessLog.init(allocator, 4096);
     defer access_log.deinit();
     var metrics = metrics_mod.Metrics.init(io);
-    try server.addMiddleware(zigmodu.http.tracingMiddleware());
+    try server.addMiddleware(zmodu.http.tracingMiddleware());
     try server.addMiddleware(metrics.middleware());
     try server.addMiddleware(try sec_headers.securityHeaders());
     try server.addMiddleware(access_log.middleware());
-    try server.addMiddleware(try zigmodu.http.http_middleware.cors(.{ .allow_origins = origins }));
+    try server.addMiddleware(try zmodu.http.http_middleware.cors(.{ .allow_origins = origins }));
 
     // Runtime registration lives on Router.scope (Server.group was removed in
-    // zigmodu v0.40.0); these routes stay outside the comptime catalog, the
+    // zmodu v0.40.0); these routes stay outside the comptime catalog, the
     // same contract the old RouteGroup had.
     var app_state: void = {};
-    var router = zigmodu.http.Router(void).init(io, allocator, &server, &app_state);
+    var router = zmodu.http.Router(void).init(io, allocator, &server, &app_state);
     defer router.deinit();
     var v1 = router.scope("/api/v1");
     try auth_api.registerRoutes(&v1);
@@ -350,7 +350,7 @@ pub fn main(init: std.process.Init) !void {
         .method = .GET,
         .path = "health/live",
         .handler = struct {
-            fn handle(ctx: *zigmodu.http.Context) !void {
+            fn handle(ctx: *zmodu.http.Context) !void {
                 try ctx.json(200, "{\"code\":0,\"msg\":\"ok\",\"data\":{\"status\":\"UP\"}}");
             }
         }.handle,
@@ -359,7 +359,7 @@ pub fn main(init: std.process.Init) !void {
         .method = .GET,
         .path = "api/v1/health/live",
         .handler = struct {
-            fn handle(ctx: *zigmodu.http.Context) !void {
+            fn handle(ctx: *zmodu.http.Context) !void {
                 try ctx.json(200, "{\"code\":0,\"msg\":\"ok\",\"data\":{\"status\":\"UP\"}}");
             }
         }.handle,
@@ -368,7 +368,7 @@ pub fn main(init: std.process.Init) !void {
         .method = .GET,
         .path = "api/v1/health/ready",
         .handler = struct {
-            fn handle(ctx: *zigmodu.http.Context) !void {
+            fn handle(ctx: *zmodu.http.Context) !void {
                 var probe = Ready.user_store_ref.listUsers(1, 1, null, null, null, false) catch {
                     try ctx.sendErrorResponse(503, 503, "数据库不可用");
                     return;
@@ -392,10 +392,10 @@ pub fn main(init: std.process.Init) !void {
         .method = .GET,
         .path = "metrics",
         .handler = struct {
-            fn handle(ctx: *zigmodu.http.Context) !void {
+            fn handle(ctx: *zmodu.http.Context) !void {
                 // /metrics IP 白名单(空 = 允许全部;生产建议限制到监控网段)。
                 if (MetricsRoute.allow_ips.len > 0) {
-                    const ip = zigmodu.http.RequestUtil.getRealIp(ctx);
+                    const ip = zmodu.http.RequestUtil.getRealIp(ctx);
                     var allowed = false;
                     var it = std.mem.splitScalar(u8, MetricsRoute.allow_ips, ',');
                     while (it.next()) |a| {
@@ -409,7 +409,7 @@ pub fn main(init: std.process.Init) !void {
                         return;
                     }
                 }
-                const body = try MetricsRoute.metrics_ref.renderPrometheus(ctx.allocator, zigmodu.time.wallClockSeconds(ctx.io orelse return error.InternalError));
+                const body = try MetricsRoute.metrics_ref.renderPrometheus(ctx.allocator, zmodu.time.wallClockSeconds(ctx.io orelse return error.InternalError));
                 defer ctx.allocator.free(body);
                 // Dispatcher 计数导出(此前仅内部自增,从未对外可见)。
                 const full = try std.fmt.allocPrint(ctx.allocator, "{s}" ++
@@ -441,7 +441,7 @@ pub fn main(init: std.process.Init) !void {
     std.posix.sigaction(std.posix.SIG.TERM, &sig, null);
 
     const ServerThread = struct {
-        fn run(s: *zigmodu.http.Server) !void {
+        fn run(s: *zmodu.http.Server) !void {
             try s.start(); // 阻塞;stop() 后返回(内部 await 在途请求)
         }
     };
