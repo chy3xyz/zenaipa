@@ -7,7 +7,7 @@
 让你在咖啡凉掉之前,把内部管理台搭好上线。
 
 [![Zig](https://img.shields.io/badge/Zig-0.17-orange?logo=zig&logoColor=white)](https://ziglang.org)
-[![zmodu](https://img.shields.io/badge/zmodu-v0.42.0-blue)](https://github.com/chy3xyz/zmodu)
+[![zmodu](https://img.shields.io/badge/zmodu-v0.43.4-blue)](https://github.com/chy3xyz/zmodu)
 [![zent](https://img.shields.io/badge/zent-ORM-6b46c1)](https://github.com/chy3xyz/zent)
 [![SolidJS](https://img.shields.io/badge/前端-SolidJS-2c4f7c?logo=solid&logoColor=white)](https://www.solidjs.com)
 [![Tests](https://img.shields.io/badge/测试-38%20后端%20%2B%205%20前端-green)]()
@@ -76,7 +76,7 @@
 
 | 层 | 技术 |
 | --- | --- |
-| 后端 | [Zig](https://ziglang.org) 0.17 · [zmodu](https://github.com/chy3xyz/zmodu) v0.42.0+(HTTP、安全、AI、resilience、Application 生命周期) · [zent](https://github.com/chy3xyz/zent) v0.97.0+(ORM、schema、迁移) |
+| 后端 | [Zig](https://ziglang.org) 0.17 · [zmodu](https://github.com/chy3xyz/zmodu) v0.43.4+(HTTP、安全、AI、resilience、Application 生命周期) · [zent](https://github.com/chy3xyz/zent) v0.97.0+(ORM、schema、迁移) |
 | 前端 | [SolidJS](https://www.solidjs.com) · TypeScript · [Rsbuild](https://rsbuild.dev) · [Tailwind CSS](https://tailwindcss.com) 4 · [DaisyUI](https://daisyui.com) · vitest |
 | 数据库 | SQLite(默认)· PostgreSQL(一个环境变量切换) |
 
@@ -205,7 +205,7 @@ cd web && npm run typecheck && npm test && npm run build   # vitest + 构建
 | ✅ 已完成 | **流式聊天** —— Agent `chatStream` + `on_delta`(zmodu v0.15.16);SSE reasoning/delta/done 打字机效果,JSON 降级 |
 | ✅ 已完成 | **运行用量审计** —— zmodu v0.15.17 `Metrics.toStats()`;每次 AI run 持久化 tokens/steps/工具调用用量,管理端 runs 表格展示 |
 | ✅ 已完成 | **流式工具 JSON 修复** —— zmodu v0.15.18(`b28444a`);SkillRegistry tools_json 输出合法 JSON(去掉多余 `}`),修复流式 chat 中 DeepSeek/OpenAI 以 400 拒绝工具 schema(`ProviderError`)的问题 |
-| ✅ 已完成 | **依赖升级到最新** —— zmodu v0.42.0 (renamed from zigmodu) + zent v0.97.0,以 `git+https` URL + 内容哈希锁定(无需本地 sibling 检出);全部 16 个写接口采用 `bindJsonLoose`;schema 合并为单一 `buildGraph`(见 zent UPGRADING §7a) |
+| ✅ 已完成 | **依赖升级到最新** —— zmodu v0.43.4 (renamed from zigmodu) + zent v0.97.0,以 `git+https` URL + 内容哈希锁定(无需本地 sibling 检出);全部 16 个写接口采用 `bindJsonLoose`;schema 合并为单一 `buildGraph`(见 zent UPGRADING §7a) |
 
 ---
 

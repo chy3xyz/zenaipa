@@ -219,7 +219,7 @@ try tx.commit();
 
 ### 3.6 zent ≥ v0.30 新增能力(按需采用)
 
-当前基线 zent v0.97.0 + zmodu v0.42.0(0.42.0 起 zigmodu 改名 zmodu:依赖键/模块名/@import/env 前缀全换,兼容别名已删),以下能力可直接用:
+当前基线 zent v0.97.0 + zmodu v0.43.4(0.42.0 起 zigmodu 改名 zmodu:依赖键/模块名/@import/env 前缀全换,兼容别名已删),以下能力可直接用:
 
 - 业务键 upsert:`CreateBuilder.SaveOrUpdateOn(&.{"code"})` /
   `SaveIgnore()`(v0.30)——替代「exists 判断后 insert」,天然幂等
@@ -278,7 +278,10 @@ try tx.commit();
   - 视图/外键/漂移检测、连接池并发不变量、借出预算
     (`borrowWithTimeout`)等,详见 zent CHANGELOG——纯增量,用到再查。
 
-- zmodu v0.15.37–v0.40.0 要点:
+- AI provider 配置注意(v0.43.2+):单维字段 `token_limit_param` / `temperature_param` /
+  `reasoning_effort` 已弃用(保留一个版本),新代码用 `AiProvider.compat: ?ModelCompat`
+  逐维补丁;本项目 provider 只配 endpoint/keys/models,未触这些字段。
+- zmodu v0.15.37–v0.43.4 要点:
   - **`http.UploadGuard`**(0.15.46,本项目 file 模块已接入):按字节
     嗅探判定文件类型,主动内容(SVG/HTML)改名也拒收;扩展名/格式
     白名单、扩展名↔内容一致性、单文件大小,判定顺序见其文档头;

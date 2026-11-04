@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Dependencies
+
+- **zmodu v0.42.0 → v0.43.4** (git tag + content-hash pin). Drop-in: none
+  of the new/deprecated surface is used here — the deprecated single-dim
+  provider fields (`token_limit_param` / `temperature_param` /
+  `reasoning_effort`) were never set, `RunAuditStore.aggregate`'s renamed
+  `since_seconds` untouched, embedded-store dialect fixes
+  (RunAuditStore/ApprovalQueue/X402Store) not consumed. Ride-along
+  benefits: AI request dialect converges on one `ModelCompat` table
+  (gpt-6 `reasoning_effort:"none"` fix, temperature-omitting for
+  reasoning families, empty `tools_json` no longer emits invalid JSON),
+  migration-loader duplicate-marker leak fixed. Clean-cache verified
+  38/38 backend tests.
+
 ### Breaking (upstream rename)
 
 - **zigmodu renamed to zmodu** (upstream v0.42.0 removed the compat alias):
