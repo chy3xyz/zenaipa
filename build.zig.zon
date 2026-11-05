@@ -9,12 +9,12 @@
         //   .zent = .{ .path = "../../zig_ws/zent" },
         //   .zmodu = .{ .path = "../../zig_ws/zigmodu", .fingerprint = 0x7aa42d07b32f8d53 },  # repo renamed zigmodu -> zmodu; local dir keeps old name
         .zent = .{
-            .url = "git+https://github.com/chy3xyz/zent?ref=v0.97.0#bd41f9c1fa5bd993c4eb2ae18fbb5c7f609a7285",
-            .hash = "zent-0.97.0-oiur-9z1LwBgRBsuLqF-hxEmLkmQnAf0KyHr7wLmGeW_",
+            .url = "git+https://github.com/chy3xyz/zent?ref=v0.97.1#b87ceb8c35b68ce4a553aee3173e1ae56bdf1afd",
+            .hash = "zent-0.97.1-oiur-wwRMABPHpf85dXQJzFgETuvimiHoW3hLfMH8rPp",
         },
         .zmodu = .{
-            .url = "git+https://github.com/chy3xyz/zmodu?ref=v0.43.4#757281526f59393f3a44fbea4c9ab72d448bc2dc",
-            .hash = "zmodu-0.43.4-gBUSK1TUtQBCRGvE5LeUA3SfNkrpM0SYGwe1m4SIETcp",
+            .url = "git+https://github.com/chy3xyz/zmodu?ref=v0.43.5#c38c5935ec0b91887beaa3a5bccf318f8e7dabe3",
+            .hash = "zmodu-0.43.5-gBUSKzwOtgDlfB2KKxnvZBcV1vHjqdOqZsOFA8aQZ0yK",
         },
     },
     .paths = .{

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Dependencies
 
+- **zent v0.97.0 → v0.97.1 + zmodu v0.43.4 → v0.43.5**（上游最新）。
+  zmodu 用面签名零变化（drop-in）。zent 0.97.1：outbox 时钟失败改为
+  显式 `ClockUnavailable` 错误（避免 created_at=0 永久错序队列），
+  SQLite view 在 `view_sql` 变化时收敛重建。清 `.zig-cache` 后 38
+  测试 + e2e 门禁全绿。
+
+### Dependencies
+
 - **zmodu v0.42.0 → v0.43.4** (git tag + content-hash pin). Drop-in: none
   of the new/deprecated surface is used here — the deprecated single-dim
   provider fields (`token_limit_param` / `temperature_param` /
