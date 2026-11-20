@@ -91,11 +91,18 @@ pub fn ProjectApi(comptime Service: type) type {
         fn createProject(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
             
-            // 需要登录
-            _ = mw.authUserId(ctx) orelse {
+            // 需要管理员权限
+            const user_id = mw.authUserId(ctx) orelse {
                 try ctx.sendErrorResponse(401, 401, "未登录");
                 return;
             };
+            
+            // 检查是否是管理员
+            const is_admin = try checkAdminPermission(ctx, user_id);
+            if (!is_admin) {
+                try ctx.sendErrorResponse(403, 403, "需要管理员权限");
+                return;
+            }
             
             const req = ctx.bindJsonLoose(struct {
                 name: []const u8,
@@ -134,11 +141,18 @@ pub fn ProjectApi(comptime Service: type) type {
         fn updateProject(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
             
-            // 需要登录
-            _ = mw.authUserId(ctx) orelse {
+            // 需要管理员权限
+            const user_id = mw.authUserId(ctx) orelse {
                 try ctx.sendErrorResponse(401, 401, "未登录");
                 return;
             };
+            
+            // 检查是否是管理员
+            const is_admin = try checkAdminPermission(ctx, user_id);
+            if (!is_admin) {
+                try ctx.sendErrorResponse(403, 403, "需要管理员权限");
+                return;
+            }
             
             const id = ctx.paramInt(i64, "id") catch {
                 try ctx.sendErrorResponse(400, 400, "无效的id参数");
