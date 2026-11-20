@@ -1,0 +1,195 @@
+=========================================
+区块链评级系统 MVP 集成测试
+=========================================
+启动服务器...
+info: zenaipa starting (db=sqlite, port=8000, env=development)
+info: [zent] migrated schema via sqlite (zenaipa.db)
+info: [tenant] default tenant ready (id=1)
+info: All module dependencies validated successfully (10 modules)
+debug: Starting module: user
+debug: Starting module: auth
+debug: Starting module: file
+debug: Starting module: notify
+debug: Starting module: tenant
+debug: Starting module: system
+debug: Starting module: task
+debug: Starting module: audit
+debug: Starting module: mail_template
+debug: Starting module: ai
+info: All 10 modules started successfully
+info: Application 'zenaipa' started successfully
+debug: ROUTE: POST api/v1/auth/register
+debug: ROUTE: POST api/v1/auth/login
+debug: ROUTE: POST api/v1/auth/logout
+debug: ROUTE: POST api/v1/auth/forgot-password
+debug: ROUTE: POST api/v1/auth/reset-password
+debug: ROUTE: POST api/v1/auth/verify-email
+debug: ROUTE: GET api/v1/auth/me
+debug: ROUTE: POST api/v1/auth/send-verification
+debug: ROUTE: PUT api/v1/auth/profile
+debug: ROUTE: PUT api/v1/auth/password
+debug: ROUTE: GET api/v1/users
+debug: ROUTE: GET api/v1/users/export
+debug: ROUTE: GET api/v1/users/{id}
+debug: ROUTE: POST api/v1/users
+debug: ROUTE: PUT api/v1/users/{id}
+debug: ROUTE: DELETE api/v1/users/{id}
+debug: ROUTE: POST api/v1/users/{id}/revoke-sessions
+debug: ROUTE: GET api/v1/tasks/stats
+debug: ROUTE: GET api/v1/tasks
+debug: ROUTE: GET api/v1/tasks/{id}
+debug: ROUTE: POST api/v1/tasks/{id}/retry
+debug: ROUTE: POST api/v1/tasks/{id}/cancel
+debug: ROUTE: POST api/v1/tasks/purge
+debug: ROUTE: DELETE api/v1/tasks/{id}
+debug: ROUTE: POST api/v1/files
+debug: ROUTE: GET api/v1/files
+debug: ROUTE: GET api/v1/files/{id}
+debug: ROUTE: DELETE api/v1/files/{id}
+debug: ROUTE: GET api/v1/notifications/unread-count
+debug: ROUTE: GET api/v1/notifications
+debug: ROUTE: POST api/v1/notifications/read-all
+debug: ROUTE: POST api/v1/notifications/{id}/read
+debug: ROUTE: DELETE api/v1/notifications/{id}
+debug: ROUTE: GET api/v1/tenants
+debug: ROUTE: POST api/v1/tenants
+debug: ROUTE: PUT api/v1/tenants/{id}
+debug: ROUTE: GET api/v1/audit-logs
+debug: ROUTE: GET api/v1/audit-logs/export
+debug: ROUTE: GET api/v1/email-templates
+debug: ROUTE: PUT api/v1/email-templates/{code}
+debug: ROUTE: GET api/v1/ai/sessions
+debug: ROUTE: POST api/v1/ai/sessions
+debug: ROUTE: GET api/v1/ai/sessions/{id}/messages
+debug: ROUTE: POST api/v1/ai/sessions/{id}/chat
+debug: ROUTE: DELETE api/v1/ai/sessions/{id}
+debug: ROUTE: GET api/v1/ai/providers
+debug: ROUTE: POST api/v1/ai/providers
+debug: ROUTE: PUT api/v1/ai/providers/{id}
+debug: ROUTE: DELETE api/v1/ai/providers/{id}
+debug: ROUTE: POST api/v1/ai/providers/{id}/check
+debug: ROUTE: GET api/v1/ai/approvals
+debug: ROUTE: POST api/v1/ai/approvals/{id}/approve
+debug: ROUTE: POST api/v1/ai/approvals/{id}/reject
+debug: ROUTE: GET api/v1/ai/runs
+debug: ROUTE: POST api/v1/ai/workflow/run
+debug: ROUTE: GET api/v1/ai/metrics
+debug: ROUTE: GET api/v1/ai/skills
+debug: ROUTE: GET api/v1/system/info
+debug: ROUTE: GET api/v1/system/dashboard
+debug: ROUTE: GET health/live
+debug: ROUTE: GET api/v1/health/live
+debug: ROUTE: GET api/v1/health/ready
+debug: ROUTE: GET metrics
+info: zenaipa listening on http://127.0.0.1:8000 (admin CLI: zig build admin -- --help)
+info: Server listening on port 8000 (63 routes)
+
+测试1: 健康检查
+debug: [HC] GET /health/live
+info: [trace=000002e9cdf075c1-0000000000000000] GET /health/live → 200 (196μs)
+[0;32m✓ 健康检查通过[0m
+
+测试2: 注册分析师账号
+debug: [HC] POST /api/v1/auth/register
+info: [trace=000002e9ce4fea99-0000000000000001] POST /api/v1/auth/register → 201 (4959897μs)
+[0;32m✓ 分析师注册成功[0m
+
+测试3: 注册审核人账号
+debug: [HC] POST /api/v1/auth/register
+info: [mail] to=analyst1@test.com subject="验证你的 zenaipa 邮箱"
+你好 analyst1@test.com,
+
+请点击以下链接完成邮箱验证：
+http://localhost:3001/verify-email?user_id=1&token=df701656eb8767dded00e6ee80e55f4b50c87f5f842199ac8debc26b391f83b1
+info: [trace=000002eaf68fb731-0000000000000002] POST /api/v1/auth/register → 201 (4960992μs)
+[0;32m✓ 审核人注册成功[0m
+
+测试4: 验证SQLite数据持久化
+[0;32m✓ SQLite数据库已创建并有数据 (94208 bytes)[0m
+
+测试5: 验证数据库schema
+数据库表：
+ai_approval
+ai_message
+ai_provider
+ai_run
+ai_session
+audit_log
+email_template
+email_verification
+file
+notification
+[0;32m✓ 数据库表创建成功 (16 个表)[0m
+
+=========================================
+集成测试完成
+=========================================
+测试结果摘要:
+- 服务器启动: ✓
+- 健康检查: ✓
+- 用户注册: ✓
+- 数据持久化: ✓
+- Schema验证: ✓
+清理进程...
+info: shutdown signal received, draining in-flight requests...
+info: server stopped gracefully (zenaipa 0.3.2)
+debug: Stopping module: ai
+debug: Stopping module: mail_template
+debug: Stopping module: audit
+debug: Stopping module: task
+debug: Stopping module: system
+debug: Stopping module: tenant
+debug: Stopping module: notify
+debug: Stopping module: file
+debug: Stopping module: auth
+debug: Stopping module: user
+info: All modules stopped successfully
+info: Application 'zenaipa' stopped
+error(SafeAllocator): leaked [addr: 7fd39e749d68, len: 84 (0x54) align: 1] allocated at: 
+/home/ubuntu/.local/zig/zig-x86_64-linux-0.17.0/lib/std/mem/Allocator.zig:512:27: 0x218fb25 in print__func_14543 (std.zig)
+    return aw.toOwnedSlice();
+                          ^
+/workspace/zig-pkg/zmodu-0.43.5-gBUSKzwOtgDlfB2KKxnvZBcV1vHjqdOqZsOFA8aQZ0yK/src/security/SecurityModule.zig:325:36: 0x2175607 in hashPassword (root.zig)
+        return self.allocator.print("$pbkdf2$100000${s}${s}", .{ salt_b64, hash_b64 });
+                                   ^
+/workspace/src/modules/user/service.zig:327:54: 0x21b7d19 in createEmailVerification (main.zig)
+        const hash = try self.sec.module.hashPassword(raw);
+                                                     ^
+/workspace/src/modules/auth/api.zig:468:61: 0x21bcb1d in sendVerificationMail (main.zig)
+            const raw_opt = self.svc.createEmailVerification(ctx.allocator, user_id) catch return;
+                                                            ^
+/workspace/src/modules/auth/api.zig:174:65: 0x22a0b5f in register (main.zig)
+            if (!session.row.verified) self.sendVerificationMail(ctx, session.row.id);
+                                                                ^
+/workspace/zig-pkg/zmodu-0.43.5-gBUSKzwOtgDlfB2KKxnvZBcV1vHjqdOqZsOFA8aQZ0yK/src/api/Server.zig:2883:30: 0x1592acb in runMiddlewareChain (root.zig)
+        try ctx.chain_handler(ctx);
+                             ^
+/workspace/zig-pkg/zmodu-0.43.5-gBUSKzwOtgDlfB2KKxnvZBcV1vHjqdOqZsOFA8aQZ0yK/src/api/middleware/Tracing.zig:161:25: 0x22ab136 in mw (root.zig)
+                try next(ctx);
+                        ^
+(additional stack frames may have been skipped...)
+
+error(SafeAllocator): leaked [addr: 7fd39e71f0a0, len: 84 (0x54) align: 1] allocated at: 
+/home/ubuntu/.local/zig/zig-x86_64-linux-0.17.0/lib/std/mem/Allocator.zig:512:27: 0x218fb25 in print__func_14543 (std.zig)
+    return aw.toOwnedSlice();
+                          ^
+/workspace/zig-pkg/zmodu-0.43.5-gBUSKzwOtgDlfB2KKxnvZBcV1vHjqdOqZsOFA8aQZ0yK/src/security/SecurityModule.zig:325:36: 0x2175607 in hashPassword (root.zig)
+        return self.allocator.print("$pbkdf2$100000${s}${s}", .{ salt_b64, hash_b64 });
+                                   ^
+/workspace/src/modules/user/service.zig:327:54: 0x21b7d19 in createEmailVerification (main.zig)
+        const hash = try self.sec.module.hashPassword(raw);
+                                                     ^
+/workspace/src/modules/auth/api.zig:468:61: 0x21bcb1d in sendVerificationMail (main.zig)
+            const raw_opt = self.svc.createEmailVerification(ctx.allocator, user_id) catch return;
+                                                            ^
+/workspace/src/modules/auth/api.zig:174:65: 0x22a0b5f in register (main.zig)
+            if (!session.row.verified) self.sendVerificationMail(ctx, session.row.id);
+                                                                ^
+/workspace/zig-pkg/zmodu-0.43.5-gBUSKzwOtgDlfB2KKxnvZBcV1vHjqdOqZsOFA8aQZ0yK/src/api/Server.zig:2883:30: 0x1592acb in runMiddlewareChain (root.zig)
+        try ctx.chain_handler(ctx);
+                             ^
+/workspace/zig-pkg/zmodu-0.43.5-gBUSKzwOtgDlfB2KKxnvZBcV1vHjqdOqZsOFA8aQZ0yK/src/api/middleware/Tracing.zig:161:25: 0x22ab136 in mw (root.zig)
+                try next(ctx);
+                        ^
+(additional stack frames may have been skipped...)
+
