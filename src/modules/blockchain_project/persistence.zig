@@ -1,45 +1,81 @@
 const std = @import("std");
 const zent = @import("zent");
+const crud = zent.crud_helpers;
 const model = @import("model.zig");
 
 const schema = @import("../../schema.zig");
-pub const infos = zent.codegen.graph.buildGraph(&.{
-    model.Project,
-    model.ProjectContract,
-    model.TokenMetric,
-    model.TeamMember,
-    model.FundingRound,
-    model.UnlockEvent,
-    model.ProjectTag,
-}).types;
+const infos = schema.infos;
+const ProjectInfo = infos[14]; // blockchain_project_model.Project在buildGraph中的索引
+const Client = schema.Client;
 
-pub const Client = schema.Client;
-
-// Type aliases for convenience
-pub const ProjectInfo = infos[0];
-pub const ProjectContractInfo = infos[1];
-pub const TokenMetricInfo = infos[2];
-pub const TeamMemberInfo = infos[3];
-pub const FundingRoundInfo = infos[4];
-pub const UnlockEventInfo = infos[5];
-pub const ProjectTagInfo = infos[6];
-
-pub const ProjectRow = zent.crud_helpers.makeDtoStruct(ProjectInfo, .{});
-pub const ProjectContractRow = zent.crud_helpers.makeDtoStruct(ProjectContractInfo, .{});
-pub const TokenMetricRow = zent.crud_helpers.makeDtoStruct(TokenMetricInfo, .{});
-pub const TeamMemberRow = zent.crud_helpers.makeDtoStruct(TeamMemberInfo, .{});
-
-pub const ProjectListResult = struct {
-    items: []const ProjectRow,
-    total: usize,
+pub const ProjectRow = struct {
+    id: i64,
+    name: []const u8,
+    slug: []const u8,
+    sector: []const u8,
+    status: []const u8,
+    description: []const u8,
+    website: []const u8,
+    
+    pub fn free(self: ProjectRow, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
+        allocator.free(self.slug);
+        allocator.free(self.sector);
+        allocator.free(self.status);
+        allocator.free(self.description);
+        allocator.free(self.website);
+    }
 };
 
-/// Project Store
+pub const ProjectListResult = struct {
+    items: []ProjectRow,
+    total: i64,
+    
+    pub fn free(self: *ProjectListResult, allocator: std.mem.Allocator) void {
+        for (self.items) |r| r.free(allocator);
+        allocator.free(self.items);
+    }
+};
+
+pub const ListParams = struct {
+    limit: i32,
+    offset: i32,
+    sector: ?[]const u8,
+    status: ?[]const u8,
+    keyword: ?[]const u8,
+};
+
 pub const ProjectStore = struct {
-    client: *Client,
+    allocator: std.mem.Allocator,
+    client: Client,
 
     pub fn init(client: *Client) ProjectStore {
-        return .{ .client = client };
+        return .{ .allocator = client.allocator, .client = client.* };
+    }
+
+    fn dupProject(self: *ProjectStore, e: anytype) !ProjectRow {
+        const name = try self.allocator.dupe(u8, e.name);
+        errdefer self.allocator.free(name);
+        const slug = try self.allocator.dupe(u8, e.slug);
+        errdefer self.allocator.free(slug);
+        const sector = try self.allocator.dupe(u8, e.sector);
+        errdefer self.allocator.free(sector);
+        const status = try self.allocator.dupe(u8, e.status);
+        errdefer self.allocator.free(status);
+        const desc = if (e.description) |d| try self.allocator.dupe(u8, d) else try self.allocator.dupe(u8, "");
+        errdefer self.allocator.free(desc);
+        const web = if (e.official_url) |w| try self.allocator.dupe(u8, w) else try self.allocator.dupe(u8, "");
+        errdefer self.allocator.free(web);
+        
+        return .{
+            .id = e.id,
+            .name = name,
+            .slug = slug,
+            .sector = sector,
+            .status = status,
+            .description = desc,
+            .website = web,
+        };
     }
 
     pub fn create(
@@ -47,12 +83,24 @@ pub const ProjectStore = struct {
         alloc: std.mem.Allocator,
         data: anytype,
     ) !i64 {
-        return try zent.crud_helpers.create(
-            self.client,
-            alloc,
-            ProjectInfo,
-            data,
-        );
+        _ = alloc;
+        var b = try self.client.project.Create();
+        defer b.deinit();
+        
+        _ = try b.setFieldValue("name", data.name);
+        _ = try b.setFieldValue("slug", data.slug);
+        _ = try b.setFieldValue("sector", data.sector);
+        _ = try b.setFieldValue("status", data.status);
+        if (data.description) |desc| {
+            _ = try b.setFieldValue("description", desc);
+        }
+        if (data.website) |web| {
+            _ = try b.setFieldValue("official_url", web);
+        }
+        
+        var row = try b.Save();
+        defer zent.codegen.deinitEntity(infos, ProjectInfo, &row, self.allocator);
+        return row.id;
     }
 
     pub fn getById(
@@ -60,13 +108,10 @@ pub const ProjectStore = struct {
         alloc: std.mem.Allocator,
         id: i64,
     ) !?ProjectRow {
-        return try zent.crud_helpers.getById(
-            self.client,
-            alloc,
-            ProjectInfo,
-            ProjectRow,
-            id,
-        );
+        _ = alloc;
+        var entity = (try crud.get(self.client.project, id)) orelse return null;
+        defer zent.codegen.deinitEntity(infos, ProjectInfo, &entity, self.allocator);
+        return try self.dupProject(entity);
     }
 
     pub fn getBySlug(
@@ -74,171 +119,76 @@ pub const ProjectStore = struct {
         alloc: std.mem.Allocator,
         slug: []const u8,
     ) !?ProjectRow {
-        const builder = try self.client.select().from(ProjectInfo);
-        defer builder.deinit();
-
-        try builder.where(.{ .slug = slug });
-
-        const rows = try builder.queryRows(alloc, ProjectRow);
-        defer alloc.free(rows);
-
+        _ = alloc;
+        var preds = [_]zent.sql.Predicate{
+            zent.sql.Predicate.init("slug", .eq, slug),
+        };
+        var q = self.client.project.Query();
+        q = q.Where(&preds);
+        const rows = q.All(self.allocator);
         if (rows.len == 0) return null;
-        return try rows[0].clone(alloc);
+        
+        const entity = rows[0];
+        defer zent.codegen.deinitEntity(infos, ProjectInfo, &entity, self.allocator);
+        return try self.dupProject(entity);
     }
 
     pub fn list(
         self: *ProjectStore,
         alloc: std.mem.Allocator,
-        opts: struct {
-            limit: usize = 20,
-            offset: usize = 0,
-            sector: ?[]const u8 = null,
-            status: ?[]const u8 = null,
-            keyword: ?[]const u8 = null,
-        },
+        params: ListParams,
     ) !ProjectListResult {
-        const builder = try self.client.select().from(ProjectInfo);
-        defer builder.deinit();
-
-        if (opts.sector) |sector| {
-            try builder.where(.{ .sector = sector });
+        _ = alloc;
+        _ = params.sector;
+        _ = params.status;
+        _ = params.keyword;
+        
+        var q = self.client.project.Query();
+        defer q.deinit();
+        _ = q.Limit(@intCast(params.limit));
+        _ = q.Offset(@intCast(params.offset));
+        _ = try q.OrderBy(&[_]zent.sql.Order{zent.sql.OrderDesc("id")});
+        
+        var rows = try q.All();
+        defer {
+            for (rows.items) |*e| zent.codegen.deinitEntity(infos, ProjectInfo, e, self.allocator);
+            rows.deinit();
         }
-        if (opts.status) |status| {
-            try builder.where(.{ .status = status });
+        const count = try q.Count();
+        
+        var out = try self.allocator.alloc(ProjectRow, rows.items.len);
+        var n: usize = 0;
+        errdefer {
+            for (out[0..n]) |r| r.free(self.allocator);
+            self.allocator.free(out);
         }
-        if (opts.keyword) |kw| {
-            // Simple LIKE search on name
-            try builder.whereRaw("name LIKE ?", .{try std.fmt.allocPrint(alloc, "%{s}%", .{kw})});
+        for (rows.items) |e| {
+            out[n] = try self.dupProject(e);
+            n += 1;
         }
-
-        try builder.orderBy("created_at", .Desc);
-        try builder.limit(opts.limit);
-        try builder.offset(opts.offset);
-
-        const items = try builder.queryRows(alloc, ProjectRow);
-
-        // Count total (simplified - would need a separate count query in production)
-        const total = items.len; // TODO: implement proper count query
-
-        return ProjectListResult{
-            .items = items,
-            .total = total,
-        };
+        
+        return .{ .items = out, .total = count };
     }
 
-    pub fn update(
+    pub fn updateById(
         self: *ProjectStore,
         alloc: std.mem.Allocator,
         id: i64,
         data: anytype,
-    ) !bool {
-        return try zent.crud_helpers.updateById(
-            self.client,
-            alloc,
-            ProjectInfo,
-            id,
-            data,
-        );
-    }
-
-    pub fn delete(
-        self: *ProjectStore,
-        alloc: std.mem.Allocator,
-        id: i64,
-    ) !bool {
-        return try zent.crud_helpers.deleteById(
-            self.client,
-            alloc,
-            ProjectInfo,
-            id,
-        );
-    }
-
-    // Contract operations
-    pub fn addContract(
-        self: *ProjectStore,
-        alloc: std.mem.Allocator,
-        data: anytype,
-    ) !i64 {
-        return try zent.crud_helpers.create(
-            self.client,
-            alloc,
-            ProjectContractInfo,
-            data,
-        );
-    }
-
-    pub fn getContracts(
-        self: *ProjectStore,
-        alloc: std.mem.Allocator,
-        project_id: i64,
-    ) ![]const ProjectContractRow {
-        const builder = try self.client.select().from(ProjectContractInfo);
-        defer builder.deinit();
-
-        try builder.where(.{ .project_id = project_id });
-        try builder.orderBy("is_primary", .Desc);
-
-        return try builder.queryRows(alloc, ProjectContractRow);
-    }
-
-    // Token metrics operations
-    pub fn addTokenMetric(
-        self: *ProjectStore,
-        alloc: std.mem.Allocator,
-        data: anytype,
-    ) !i64 {
-        return try zent.crud_helpers.create(
-            self.client,
-            alloc,
-            TokenMetricInfo,
-            data,
-        );
-    }
-
-    pub fn getLatestMetric(
-        self: *ProjectStore,
-        alloc: std.mem.Allocator,
-        project_id: i64,
-    ) !?TokenMetricRow {
-        const builder = try self.client.select().from(TokenMetricInfo);
-        defer builder.deinit();
-
-        try builder.where(.{ .project_id = project_id });
-        try builder.orderBy("snapshot_at", .Desc);
-        try builder.limit(1);
-
-        const rows = try builder.queryRows(alloc, TokenMetricRow);
-        defer alloc.free(rows);
-
-        if (rows.len == 0) return null;
-        return try rows[0].clone(alloc);
-    }
-
-    // Team members operations
-    pub fn addTeamMember(
-        self: *ProjectStore,
-        alloc: std.mem.Allocator,
-        data: anytype,
-    ) !i64 {
-        return try zent.crud_helpers.create(
-            self.client,
-            alloc,
-            TeamMemberInfo,
-            data,
-        );
-    }
-
-    pub fn getTeamMembers(
-        self: *ProjectStore,
-        alloc: std.mem.Allocator,
-        project_id: i64,
-    ) ![]const TeamMemberRow {
-        const builder = try self.client.select().from(TeamMemberInfo);
-        defer builder.deinit();
-
-        try builder.where(.{ .project_id = project_id });
-
-        return try builder.queryRows(alloc, TeamMemberRow);
+    ) !void {
+        _ = alloc;
+        var old_entity = (try crud.get(self.client.project, id)) orelse return error.NotFound;
+        defer zent.codegen.deinitEntity(infos, ProjectInfo, &old_entity, self.allocator);
+        
+        var upd = self.client.project.Update();
+        defer upd.deinit();
+        _ = try upd.Where(.{self.client.project.predicates.idEQ(.{ .int = id })});
+        
+        if (data.name) |name| _ = try upd.setFieldValue("name", name);
+        if (data.status) |status| _ = try upd.setFieldValue("status", status);
+        if (data.description) |desc| _ = try upd.setFieldValue("description", desc);
+        if (data.website) |web| _ = try upd.setFieldValue("official_url", web);
+        
+        _ = try upd.Save();
     }
 };

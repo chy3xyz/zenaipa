@@ -3,7 +3,7 @@ const field = zent.core.field;
 const Schema = zent.core.schema.Schema;
 
 /// 区块链项目主表
-pub const Project = Schema("blockchain_projects", .{
+pub const Project = Schema("Project", .{
     .fields = &.{
         field.String("name"), // 项目名称
         field.String("slug").Unique(), // URL友好标识
