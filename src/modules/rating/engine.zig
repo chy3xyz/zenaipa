@@ -116,10 +116,11 @@ pub const RatingEngine = struct {
         coverage: i32, // 0-100
     ) struct { confidence: i32, status: []const u8 } {
         const conf_value = coverage * 10; // 转为千分比
-        if (conf_value >= ConfidenceThresholds.normal) {
+        const thresholds = ConfidenceThresholds{};
+        if (conf_value >= thresholds.normal) {
             return .{ .confidence = conf_value, .status = "normal" };
         }
-        if (conf_value >= ConfidenceThresholds.medium) {
+        if (conf_value >= thresholds.medium) {
             return .{ .confidence = conf_value, .status = "medium" };
         }
         return .{ .confidence = conf_value, .status = "nr" };
@@ -178,3 +179,54 @@ pub const RatingEngine = struct {
         };
     }
 };
+
+// ==== TESTS ====
+const testing = std.testing;
+
+test "RatingEngine.calculateBaseScore: normal case" {
+    const dims = RatingEngine.SixDimensions{ .tech = 80, .team = 70, .tokenomics = 60, .community = 75, .liquidity = 65, .compliance = 70 };
+    const weights = RatingEngine.DefaultWeights{};
+    const score = RatingEngine.calculateBaseScore(dims, weights);
+    try testing.expect(score >= 60 and score <= 80);
+}
+
+test "RatingEngine.scoreToGrade: boundary checks" {
+    const t = RatingEngine.GradeThresholds{};
+    try testing.expectEqualStrings("S", RatingEngine.scoreToGrade(90, t));
+    try testing.expectEqualStrings("A", RatingEngine.scoreToGrade(80, t));
+    try testing.expectEqualStrings("B", RatingEngine.scoreToGrade(65, t));
+    try testing.expectEqualStrings("C", RatingEngine.scoreToGrade(50, t));
+    try testing.expectEqualStrings("D", RatingEngine.scoreToGrade(30, t));
+}
+
+test "RatingEngine.applyRedFlags: R1 caps to D" {
+    const r1 = [_]RatingEngine.RedFlag{.R1};
+    try testing.expectEqualStrings("D", RatingEngine.applyRedFlags("S", &r1));
+    try testing.expectEqualStrings("D", RatingEngine.applyRedFlags("A", &r1));
+}
+
+test "RatingEngine.applyRedFlags: R2 downgrades one level" {
+    const r2 = [_]RatingEngine.RedFlag{.R2};
+    try testing.expectEqualStrings("A", RatingEngine.applyRedFlags("S", &r2));
+    try testing.expectEqualStrings("B", RatingEngine.applyRedFlags("A", &r2));
+    try testing.expectEqualStrings("D", RatingEngine.applyRedFlags("D", &r2));
+}
+
+test "RatingEngine.calculateConfidence: thresholds" {
+    try testing.expect((RatingEngine.calculateConfidence(50)).confidence < 600);
+    try testing.expect((RatingEngine.calculateConfidence(70)).confidence >= 600);
+}
+
+test "RatingEngine.calculateRating: full flow" {
+    const alloc = testing.allocator;
+    const dims = RatingEngine.SixDimensions{ .tech = 80, .team = 80, .tokenomics = 80, .community = 80, .liquidity = 80, .compliance = 80 };
+    const r = [_]RatingEngine.RedFlag{};
+    
+    const result = try RatingEngine.calculateRating(alloc, dims, RatingEngine.DefaultWeights{}, RatingEngine.GradeThresholds{}, &r, 100);
+    defer alloc.free(result.redflags);
+    
+    try testing.expect(result.base_score == 80);
+    try testing.expectEqualStrings("A", result.base_grade);
+    try testing.expectEqualStrings("A", result.published_grade);
+    try testing.expect(result.confidence_six >= 900);
+}

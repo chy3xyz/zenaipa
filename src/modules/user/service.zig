@@ -175,6 +175,7 @@ pub const UserService = struct {
     }
 
     fn issueSession(self: *UserService, allocator: std.mem.Allocator, email: []const u8, admin: bool, tenant_id: i64) !Session {
+        _ = admin; // 忽略传入参数，使用最新DB值
         const row_opt = try self.store.getUserByEmail(email);
         const row = row_opt orelse return error.InvalidCredentials;
         errdefer row.free(self.store.allocator);
@@ -184,7 +185,8 @@ pub const UserService = struct {
         const tenant_str = try std.fmt.allocPrint(allocator, "{d}", .{tenant_id});
         defer allocator.free(tenant_str);
 
-        const roles = if (admin) &[_][]const u8{"admin"} else &[_][]const u8{"user"};
+        // 使用最新从DB读取的admin状态
+        const roles = if (row.admin) &[_][]const u8{"admin"} else &[_][]const u8{"user"};
         const token = try self.sec.module.generateTokenWithTenantAndVersion(id_str, roles, tenant_str, row.token_version);
         return .{ .row = row, .token = token };
     }

@@ -3,16 +3,17 @@ const zmodu = @import("zmodu");
 const http = zmodu.http;
 const mw = @import("../../middleware/auth.zig");
 
-// 权限检查辅助函数：检查roles CSV中是否包含"admin"
+// 权限检查辅助函数：检查roles CSV中是否包含"admin" (exact match)
 fn checkAdminPermission(ctx: *http.Context, user_id: i64) bool {
     _ = user_id;
     const roles_csv = ctx.getAttr("roles") orelse return false;
     
-    // roles是CSV字符串，例如 "user" 或 "user,admin" 或 "admin"
+    // roles是CSV字符串，必须exact match "admin"
     var iter = std.mem.splitScalar(u8, roles_csv, ',');
     while (iter.next()) |role| {
-        const trimmed = std.mem.trim(u8, role, " \t");
-        if (std.mem.eql(u8, trimmed, "admin")) {
+        const trimmed = std.mem.trim(u8, role, " \t\r\n");
+        // Exact match - "admin" != "notadmin" or "administrator"
+        if (trimmed.len == 5 and std.mem.eql(u8, trimmed, "admin")) {
             return true;
         }
     }
@@ -22,18 +23,25 @@ fn checkAdminPermission(ctx: *http.Context, user_id: i64) bool {
 pub fn ProjectApi(comptime Service: type) type {
     return struct {
         service: *Service,
+        sec: *zmodu.security.AppSecurity,
 
         const Self = @This();
 
-        pub fn init(service: *Service) Self {
-            return .{ .service = service };
+        pub fn init(service: *Service, sec: *zmodu.security.AppSecurity) Self {
+            return .{ .service = service, .sec = sec };
         }
 
         pub fn registerRoutes(self: *Self, group: anytype) !void {
-            try group.get("projects", listProjects, @ptrCast(@alignCast(self)));
-            try group.get("projects/{id}", getProject, @ptrCast(@alignCast(self)));
-            try group.post("projects", createProject, @ptrCast(@alignCast(self)));
-            try group.put("projects/{id}", updateProject, @ptrCast(@alignCast(self)));
+            // 挂载JWT中间件
+            var g = try group.use(zmodu.http.http_middleware.jwtAuthWithSecurity(&self.sec.module));
+            
+            // 公开路由(可选JWT)
+            try g.get("projects", listProjects, @ptrCast(@alignCast(self)));
+            try g.get("projects/{id}", getProject, @ptrCast(@alignCast(self)));
+            
+            // 管理员路由(需JWT + admin权限)
+            try g.post("projects", createProject, @ptrCast(@alignCast(self)));
+            try g.put("projects/{id}", updateProject, @ptrCast(@alignCast(self)));
         }
 
         fn listProjects(ctx: *http.Context) !void {

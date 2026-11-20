@@ -345,9 +345,9 @@ pub fn main(init: std.process.Init) !void {
     var ai_api = ai.api.AiApi(@TypeOf(ai_svc), @TypeOf(user_svc)).init(&ai_svc, &user_svc);
     
     // 区块链项目 API 初始化
-    var project_api = blockchain_project.api.ProjectApi(@TypeOf(project_svc)).init(&project_svc);
+    var project_api = blockchain_project.api.ProjectApi(@TypeOf(project_svc)).init(&project_svc, &sec);
     const sqlite_driver = store_env.sqlite orelse @panic("SQLite driver not available");
-    var rating_api_handler = blockchain_project.rating_api.RatingAPI.init(allocator, sqlite_driver);
+    var rating_api_handler = blockchain_project.rating_api.RatingAPI.init(allocator, sqlite_driver, &sec);
     
     var system_api = system.api.SystemApi(@TypeOf(cache), @TypeOf(task_svc)).init(
         &cache,
