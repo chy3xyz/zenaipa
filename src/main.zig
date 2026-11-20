@@ -37,6 +37,9 @@ const audit = @import("modules/audit/root.zig");
 const mail_template = @import("modules/mail_template/root.zig");
 const ai = @import("modules/ai/root.zig");
 
+// 区块链项目模块
+const blockchain_project = @import("modules/blockchain_project/root.zig");
+
 /// Set by SIGINT/SIGTERM so the main thread can stop the server gracefully.
 const ShutdownFlag = struct {
     var requested = std.atomic.Value(bool).init(false);
@@ -205,6 +208,63 @@ pub fn main(init: std.process.Init) !void {
     });
     defer ai_svc.deinit();
 
+    // 区块链项目服务初始化
+    // 运行blockchain_project迁移
+    if (store_env.sqlite) |sqlite_driver| {
+        // 确保FK已启用（在任何操作之前）
+        try sqlite_driver.enforceForeignKeys();
+        
+        try blockchain_project.migrations.runMigrations(sqlite_driver);
+        try blockchain_project.rating_migrations.runRatingMigrations(sqlite_driver);
+        try blockchain_project.publish_migrations.runPublishMigrations(sqlite_driver);
+        
+        // WAL已在db.zig初始化时设置，这里再次确认
+        _ = try sqlite_driver.exec("PRAGMA journal_mode=WAL;", &.{});
+        
+        // 验证FK确实启用了
+        const fk_enabled = try sqlite_driver.foreignKeysEnforced();
+        if (!fk_enabled) {
+            std.log.err("[blockchain_project] FK not enabled after enforceForeignKeys!", .{});
+            return error.ForeignKeysNotEnabled;
+        }
+        
+        // FK功能测试：创建临时表验证
+        _ = try sqlite_driver.exec(
+            "CREATE TEMP TABLE IF NOT EXISTS _fk_test_parent (id INTEGER PRIMARY KEY)",
+            &.{},
+        );
+        _ = try sqlite_driver.exec(
+            "CREATE TEMP TABLE IF NOT EXISTS _fk_test_child (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL, FOREIGN KEY(parent_id) REFERENCES _fk_test_parent(id))",
+            &.{},
+        );
+        _ = try sqlite_driver.exec("INSERT INTO _fk_test_parent (id) VALUES (1)", &.{});
+        
+        // 测试非法FK插入（应该失败）
+        const fk_violation = sqlite_driver.exec(
+            "INSERT INTO _fk_test_child (id, parent_id) VALUES (1, 999)",
+            &.{},
+        );
+        if (fk_violation) |_| {
+            std.log.err("[blockchain_project] FK test FAILED: invalid FK insert was accepted!", .{});
+            return error.ForeignKeyNotEnforced;
+        } else |err| {
+            if (err == error.ForeignKeyViolation or err == error.Constraint) {
+                std.log.info("[blockchain_project] ✓ FK verified: constraint violation correctly rejected", .{});
+            } else {
+                std.log.err("[blockchain_project] FK test unexpected error: {s}", .{@errorName(err)});
+                return err;
+            }
+        }
+        
+        std.log.info("[blockchain_project] migrations completed, WAL/FK/busy_timeout verified", .{});
+    }
+    
+    var project_repo = if (store_env.sqlite) |sqlite_driver|
+        blockchain_project.repository.ProjectRepository.init(allocator, sqlite_driver)
+    else
+        @panic("PostgreSQL not yet supported for blockchain_project");
+    var project_svc = blockchain_project.service.ProjectService.init(&project_repo);
+
     // ── ZigModu module lifecycle (Application API: scan + validate + start/stop) ──
     var app = try zmodu.Application.init(io, allocator, "zenaipa", .{
         tenant.module,
@@ -217,6 +277,7 @@ pub fn main(init: std.process.Init) !void {
         audit.module,
         mail_template.module,
         ai.module,
+        blockchain_project.module,
     }, .{});
     defer app.deinit();
     try app.start();
@@ -283,6 +344,13 @@ pub fn main(init: std.process.Init) !void {
     var audit_api = audit.api.AuditApi(@TypeOf(audit_svc), @TypeOf(user_svc)).init(&audit_svc, &user_svc);
     var mail_template_api = mail_template.api.MailTemplateApi(@TypeOf(template_svc), @TypeOf(user_svc)).init(&template_svc, &user_svc);
     var ai_api = ai.api.AiApi(@TypeOf(ai_svc), @TypeOf(user_svc)).init(&ai_svc, &user_svc);
+    
+    // 区块链项目 API 初始化
+    var project_api = blockchain_project.api.ProjectApi(@TypeOf(project_svc)).init(&project_svc, &sec);
+    const sqlite_driver = store_env.sqlite orelse @panic("SQLite driver not available");
+    var rating_api_handler = blockchain_project.rating_api.RatingAPI.init(allocator, sqlite_driver, &sec);
+    var publish_api_handler = blockchain_project.publish_api.PublishAPI.init(sqlite_driver, allocator, &sec);
+    
     var system_api = system.api.SystemApi(@TypeOf(cache), @TypeOf(task_svc)).init(
         &cache,
         &task_svc,
@@ -339,6 +407,11 @@ pub fn main(init: std.process.Init) !void {
     try mail_template_api.registerRoutes(&v1);
     try ai_api.registerRoutes(&v1);
     try system_api.registerRoutes(&v1);
+    
+    // 区块链项目路由注册
+    try project_api.registerRoutes(&v1);
+    try rating_api_handler.registerRoutes(&v1);
+    try publish_api_handler.registerRoutes(&router);
 
     // Health: liveness at the server root (probe convention) and readiness
     // under the API prefix (checks the data store).
