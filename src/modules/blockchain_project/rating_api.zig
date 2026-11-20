@@ -25,12 +25,14 @@ pub const RatingAPI = struct {
         // 挂载JWT中间件
         var g = try router.use(zmodu.http.http_middleware.jwtAuthWithSecurity(&self.sec.module));
         
-        try g.post("projects/{id}/ratings", @ptrCast(&handleCreateDraft), self);
-        try g.get("projects/{id}/ratings/{rating_id}", @ptrCast(&handleGetDraft), self);
+        try g.post("projects/{id}/ratings", handleCreateDraft, @ptrCast(@alignCast(self)));
+        try g.get("projects/{id}/ratings/{rating_id}", handleGetDraft, @ptrCast(@alignCast(self)));
     }
 };
 
-fn handleCreateDraft(self: *RatingAPI, ctx: *http.Context) !void {
+fn handleCreateDraft(ctx: *http.Context) !void {
+    const self: *RatingAPI = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
+    
     // 鉴权：必须管理员
     const user_id_str = ctx.getAttr("user_id") orelse {
         try ctx.json(401, "{\"error\":\"Unauthorized\"}");
@@ -202,7 +204,9 @@ fn handleCreateDraft(self: *RatingAPI, ctx: *http.Context) !void {
     try ctx.json(201, response_json);
 }
 
-fn handleGetDraft(self: *RatingAPI, ctx: *http.Context) !void {
+fn handleGetDraft(ctx: *http.Context) !void {
+    const self: *RatingAPI = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
+    
     // 鉴权：必须管理员
     const user_id_str = ctx.getAttr("user_id") orelse {
         try ctx.json(401, "{\"error\":\"Unauthorized\"}");
