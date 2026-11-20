@@ -20,49 +20,19 @@ pub fn ProjectApi(comptime Service: type) type {
         }
 
         fn listProjects(ctx: *http.Context) !void {
-            _ = ctx;
-            return error.NotImplemented;
-        }
-        
-        fn listProjectsOld(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
             
             const limit: i32 = ctx.queryInt(i32, "limit", 20);
             const offset: i32 = ctx.queryInt(i32, "offset", 0);
-            const sector = ctx.queryParam("sector");
-            const status = ctx.queryParam("status");
-            const keyword = ctx.queryParam("keyword");
             
-            const result = self.service.listProjects(ctx.allocator, .{
-                .limit = limit,
-                .offset = offset,
-                .sector = sector,
-                .status = status,
-                .keyword = keyword,
-            }) catch |err| {
+            var result = self.service.listProjects(ctx.allocator, limit, offset) catch |err| {
                 std.log.err("listProjects error: {s}", .{@errorName(err)});
-                try ctx.sendErrorResponse(500, 500, "服务器内部错误");
+                try ctx.text(500, "Internal server error");
                 return;
             };
+            defer result.deinit(ctx.allocator);
             
-            var buf = std.ArrayList(u8).init(ctx.allocator);
-            defer buf.deinit();
-            const writer = buf.writer();
-            
-            try writer.writeAll("{\"code\":0,\"msg\":\"success\",\"data\":{\"items\":[");
-            for (result.items, 0..) |item, i| {
-                if (i > 0) try writer.writeAll(",");
-                try std.json.stringify(.{
-                    .id = item.id,
-                    .name = item.name,
-                    .slug = item.slug,
-                    .sector = item.sector,
-                    .status = item.status,
-                }, .{}, writer);
-            }
-            try writer.print("],\"total\":{d}}}}}", .{result.total});
-            
-            try ctx.json(200, buf.items);
+            try ctx.json(200, result);
         }
 
         fn getProject(ctx: *http.Context) !void {
@@ -77,17 +47,18 @@ pub fn ProjectApi(comptime Service: type) type {
                 return;
             };
             
-            _ = self.service.getProject(ctx.allocator, id) catch |err| {
+            const project = self.service.getProject(ctx.allocator, id) catch |err| {
                 if (err == error.NotFound) {
-                    try ctx.sendErrorResponse(404, 404, "项目不存在");
+                    try ctx.text(404, "Not found");
                     return;
                 }
                 std.log.err("getProject error: {s}", .{@errorName(err)});
-                try ctx.sendErrorResponse(500, 500, "服务器内部错误");
+                try ctx.text(500, "Internal server error");
                 return;
             };
+            defer project.deinit(ctx.allocator);
             
-            try ctx.text(200, "OK");
+            try ctx.json(200, project);
         }
 
         fn createProject(ctx: *http.Context) !void {
@@ -115,13 +86,11 @@ pub fn ProjectApi(comptime Service: type) type {
                 .website = req.website,
             }) catch |err| {
                 std.log.err("createProject error: {s}", .{@errorName(err)});
-                try ctx.sendErrorResponse(500, 500, "创建失败");
+                try ctx.text(500, "Create failed");
                 return;
             };
             
-            var buf: [256]u8 = undefined;
-            const json_str = try std.fmt.bufPrint(&buf, "{{\"code\":0,\"msg\":\"success\",\"data\":{{\"id\":{d}}}}}", .{project_id});
-            try ctx.json(201, json_str);
+            try ctx.json(201, .{ .id = project_id });
         }
 
         fn updateProject(ctx: *http.Context) !void {
@@ -138,6 +107,8 @@ pub fn ProjectApi(comptime Service: type) type {
             
             const req = ctx.bindJsonLoose(struct {
                 name: ?[]const u8 = null,
+                slug: ?[]const u8 = null,
+                sector: ?[]const u8 = null,
                 status: ?[]const u8 = null,
                 description: ?[]const u8 = null,
                 website: ?[]const u8 = null,
@@ -146,12 +117,16 @@ pub fn ProjectApi(comptime Service: type) type {
                 return;
             };
             
-            self.service.updateProject(ctx.allocator, id, .{
-                .name = req.name,
-                .status = req.status,
-                .description = req.description,
-                .website = req.website,
-            }) catch |err| {
+            self.service.updateProject(
+                ctx.allocator,
+                id,
+                req.name,
+                req.slug,
+                req.sector,
+                req.status,
+                req.description,
+                req.website,
+            ) catch |err| {
                 if (err == error.NotFound) {
                     try ctx.sendErrorResponse(404, 404, "项目不存在");
                     return;
@@ -161,7 +136,7 @@ pub fn ProjectApi(comptime Service: type) type {
                 return;
             };
             
-            try ctx.json(200, "{\"code\":0,\"msg\":\"success\"}");
+            try ctx.text(200, "OK");
         }
     };
 }

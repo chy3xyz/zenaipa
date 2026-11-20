@@ -209,8 +209,23 @@ pub fn main(init: std.process.Init) !void {
     defer ai_svc.deinit();
 
     // 区块链项目服务初始化
-    var project_store = blockchain_project.persistence.ProjectStore.init(&store_env.client);
-    var project_svc = blockchain_project.service.ProjectService.init(&project_store);
+    // 运行blockchain_project迁移
+    if (store_env.sqlite) |sqlite_driver| {
+        try blockchain_project.migrations.runMigrations(sqlite_driver);
+        
+        // 启用WAL, FK, busy_timeout
+        _ = try sqlite_driver.exec("PRAGMA journal_mode=WAL;", &.{});
+        try sqlite_driver.enforceForeignKeys();
+        sqlite_driver.default_busy_timeout = 5000;
+        
+        std.log.info("[blockchain_project] migrations completed, WAL/FK/busy_timeout enabled", .{});
+    }
+    
+    var project_repo = if (store_env.sqlite) |sqlite_driver|
+        blockchain_project.repository.ProjectRepository.init(allocator, sqlite_driver)
+    else
+        @panic("PostgreSQL not yet supported for blockchain_project");
+    var project_svc = blockchain_project.service.ProjectService.init(&project_repo);
 
     // ── ZigModu module lifecycle (Application API: scan + validate + start/stop) ──
     var app = try zmodu.Application.init(io, allocator, "zenaipa", .{

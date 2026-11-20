@@ -1,62 +1,62 @@
 const std = @import("std");
-const persistence = @import("persistence.zig");
-const ProjectStore = persistence.ProjectStore;
-const ProjectRow = persistence.ProjectRow;
-const ProjectListResult = persistence.ProjectListResult;
-const ListParams = persistence.ListParams;
+const repository = @import("repository.zig");
+const ProjectRepository = repository.ProjectRepository;
+const ProjectRow = repository.ProjectRow;
+const ProjectListResult = repository.ProjectListResult;
 
 pub const ProjectService = struct {
-    store: *ProjectStore,
+    repo: *ProjectRepository,
 
-    pub fn init(store: *ProjectStore) ProjectService {
-        return .{ .store = store };
+    pub fn init(repo: *ProjectRepository) ProjectService {
+        return .{ .repo = repo };
     }
 
     pub fn createProject(
         self: *ProjectService,
-        alloc: std.mem.Allocator,
+        _: std.mem.Allocator,
         data: anytype,
     ) !i64 {
-        return try self.store.create(alloc, data);
+        const sector = data.sector orelse "Other";
+        const status = data.status orelse "active";
+        return try self.repo.create(
+            data.name,
+            data.slug,
+            sector,
+            status,
+            data.description,
+            data.website,
+        );
     }
 
     pub fn getProject(
         self: *ProjectService,
-        alloc: std.mem.Allocator,
+        _: std.mem.Allocator,
         id: i64,
     ) !ProjectRow {
-        const project_opt = try self.store.getById(alloc, id);
-        return project_opt orelse error.NotFound;
-    }
-
-    pub fn getProjectBySlug(
-        self: *ProjectService,
-        alloc: std.mem.Allocator,
-        slug: []const u8,
-    ) !?ProjectRow {
-        return try self.store.getBySlug(alloc, slug);
+        return try self.repo.getById(id) orelse error.NotFound;
     }
 
     pub fn listProjects(
         self: *ProjectService,
-        alloc: std.mem.Allocator,
-        params: ListParams,
+        _: std.mem.Allocator,
+        limit: i32,
+        offset: i32,
     ) !ProjectListResult {
-        return try self.store.list(alloc, params);
+        return try self.repo.list(limit, offset);
     }
 
     pub fn updateProject(
         self: *ProjectService,
-        alloc: std.mem.Allocator,
+        _: std.mem.Allocator,
         id: i64,
-        data: anytype,
+        name: ?[]const u8,
+        slug: ?[]const u8,
+        sector: ?[]const u8,
+        status: ?[]const u8,
+        description: ?[]const u8,
+        website: ?[]const u8,
     ) !void {
-        // 验证项目存在
-        const _proj = try self.getProject(alloc, id);
-        _proj.free(alloc);
-        
-        // 更新
-        return try self.store.updateById(alloc, id, data);
+        return try self.repo.update(id, name, slug, sector, status, description, website);
     }
 
     pub fn importFromCsv(
