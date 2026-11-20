@@ -16,13 +16,11 @@ pub const ProjectService = struct {
         _: std.mem.Allocator,
         data: anytype,
     ) !i64 {
-        const sector = data.sector orelse "Other";
-        const status = data.status orelse "active";
         return try self.repo.create(
             data.name,
             data.slug,
-            sector,
-            status,
+            data.sector orelse "Other",
+            data.status orelse "active",
             data.description,
             data.website,
         );
