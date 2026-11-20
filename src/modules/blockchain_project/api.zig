@@ -3,6 +3,13 @@ const zmodu = @import("zmodu");
 const http = zmodu.http;
 const mw = @import("../../middleware/auth.zig");
 
+// 权限检查辅助函数
+fn checkAdminPermission(ctx: *http.Context, user_id: i64) bool {
+    _ = user_id;
+    const admin_str = ctx.getAttr("admin") orelse return false;
+    return std.mem.eql(u8, admin_str, "true");
+}
+
 pub fn ProjectApi(comptime Service: type) type {
     return struct {
         service: *Service,
@@ -98,8 +105,7 @@ pub fn ProjectApi(comptime Service: type) type {
             };
             
             // 检查是否是管理员
-            const is_admin = try checkAdminPermission(ctx, user_id);
-            if (!is_admin) {
+            if (!checkAdminPermission(ctx, user_id)) {
                 try ctx.sendErrorResponse(403, 403, "需要管理员权限");
                 return;
             }
@@ -148,8 +154,7 @@ pub fn ProjectApi(comptime Service: type) type {
             };
             
             // 检查是否是管理员
-            const is_admin = try checkAdminPermission(ctx, user_id);
-            if (!is_admin) {
+            if (!checkAdminPermission(ctx, user_id)) {
                 try ctx.sendErrorResponse(403, 403, "需要管理员权限");
                 return;
             }

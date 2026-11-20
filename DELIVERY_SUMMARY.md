@@ -313,3 +313,67 @@ The following are deferred for future iterations:
 - Frontend pages
 
 This delivery focused on **project CRUD foundation with real SQLite persistence and proper constraints**.
+
+---
+
+## Update 2: Rating Engine Core (Commit `$(git rev-parse HEAD | cut -c1-7)`)
+
+### ✅ Six-Dimension Rating Engine
+
+**File**: `src/modules/blockchain_project/rating_engine.zig`
+
+**Features**:
+- ✅ Weighted scoring across 6 dimensions (C1-C6)
+- ✅ Grade thresholds: S≥85, A≥75, B≥60, C≥45, D<45
+- ✅ Confidence calculation: evidence_weight_sum / total_weight
+- ✅ NR priority for low confidence (<0.60)
+- ✅ Red flag mechanisms:
+  - R1/R4 (critical/security) → cap at D
+  - R2/R3/R5/R6 (other issues) → max one-level downgrade
+  - No crossing D boundary
+  - Multiple flags → take worst
+- ✅ Input validation:
+  - Weights sum to 1.0
+  - Scores in [0, 100]
+  - Reject NaN/infinity
+
+**Test Results**:
+```bash
+$ zig test src/modules/blockchain_project/rating_engine.zig
+1/6 rating engine - S grade...OK
+2/6 rating engine - low confidence NR...OK
+3/6 rating engine - R1 caps to D...OK
+4/6 rating engine - R2 downgrades one level...OK
+5/6 rating engine - invalid weight...OK
+6/6 rating engine - invalid score...OK
+All 6 tests passed.
+```
+
+**Test Coverage**:
+1. **S grade**: Full scores (90, 85, 88, 92, 80, 85) → S
+2. **Low confidence NR**: Only 50% weight covered (0.5 < 0.60) → NR
+3. **R1 critical fraud**: Base S + R1 → D (capped)
+4. **R2 team issue**: Base S + R2 → A (one-level down)
+5. **Invalid weight**: 1.5 > 1.0 → error.InvalidWeight
+6. **Invalid score**: 150 > 100 → error.InvalidScore
+
+**Determinism**: Same inputs + version → same output (pure functions, no randomness)
+
+### 🚧 In Progress
+
+**RBAC Implementation**: Started but compilation issues pending
+- Added admin check skeleton
+- Need to wire user.admin field lookup
+
+**Rating API**: Not yet implemented
+- POST /projects/{id}/ratings
+- GET rating queries
+- SQLite persistence layer
+- Draft/published separation
+
+### Next Steps
+
+1. Fix RBAC compilation
+2. Implement rating persistence (repository + migration)
+3. Add rating API endpoints
+4. Integration tests: demo project → draft rating → restart → verify
