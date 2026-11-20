@@ -215,6 +215,7 @@ pub fn main(init: std.process.Init) !void {
         try sqlite_driver.enforceForeignKeys();
         
         try blockchain_project.migrations.runMigrations(sqlite_driver);
+        try blockchain_project.rating_migrations.runRatingMigrations(sqlite_driver);
         
         // WAL已在db.zig初始化时设置，这里再次确认
         _ = try sqlite_driver.exec("PRAGMA journal_mode=WAL;", &.{});
@@ -345,6 +346,8 @@ pub fn main(init: std.process.Init) !void {
     
     // 区块链项目 API 初始化
     var project_api = blockchain_project.api.ProjectApi(@TypeOf(project_svc)).init(&project_svc);
+    const sqlite_driver = store_env.sqlite orelse @panic("SQLite driver not available");
+    var rating_api_handler = blockchain_project.rating_api.RatingAPI.init(allocator, sqlite_driver);
     
     var system_api = system.api.SystemApi(@TypeOf(cache), @TypeOf(task_svc)).init(
         &cache,
@@ -405,6 +408,7 @@ pub fn main(init: std.process.Init) !void {
     
     // 区块链项目路由注册
     try project_api.registerRoutes(&v1);
+    try rating_api_handler.registerRoutes(&v1);
 
     // Health: liveness at the server root (probe convention) and readiness
     // under the API prefix (checks the data store).

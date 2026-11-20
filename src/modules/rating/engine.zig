@@ -70,7 +70,7 @@ pub const RatingEngine = struct {
             @as(i64, dimensions.liquidity) * weights.liquidity +
             @as(i64, dimensions.compliance) * weights.compliance;
 
-        return @intCast((total + 500) / 1000); // 四舍五入
+        return @intCast(@divTrunc(total + 500, 1000)); // 四舍五入
     }
 
     /// 分数转档位
