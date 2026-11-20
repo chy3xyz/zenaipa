@@ -9,4 +9,5 @@ pub const publish_migrations = @import("publish_migrations.zig");
 pub const service = @import("service.zig");
 pub const api = @import("api.zig");
 pub const rating_api = @import("rating_api.zig");
+pub const publish_api = @import("publish_api.zig");
 pub const module = @import("module.zig");

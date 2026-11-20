@@ -349,6 +349,7 @@ pub fn main(init: std.process.Init) !void {
     var project_api = blockchain_project.api.ProjectApi(@TypeOf(project_svc)).init(&project_svc, &sec);
     const sqlite_driver = store_env.sqlite orelse @panic("SQLite driver not available");
     var rating_api_handler = blockchain_project.rating_api.RatingAPI.init(allocator, sqlite_driver, &sec);
+    var publish_api_handler = blockchain_project.publish_api.PublishAPI.init(sqlite_driver, allocator);
     
     var system_api = system.api.SystemApi(@TypeOf(cache), @TypeOf(task_svc)).init(
         &cache,
@@ -410,6 +411,7 @@ pub fn main(init: std.process.Init) !void {
     // 区块链项目路由注册
     try project_api.registerRoutes(&v1);
     try rating_api_handler.registerRoutes(&v1);
+    try publish_api_handler.registerRoutes(&router);
 
     // Health: liveness at the server root (probe convention) and readiness
     // under the API prefix (checks the data store).

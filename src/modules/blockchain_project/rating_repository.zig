@@ -174,24 +174,77 @@ pub const RatingRepository = struct {
         return false;
     }
 
+    pub const SubmitInput = struct {
+        rating_id: i64,
+        analyst_id: i64,
+        report_facts_json: []const u8,
+        report_disclaimer: []const u8,
+        report_conflict: []const u8,
+    };
+    
+    // Compute content hash for submission
+    fn computeSubmitHash(self: *RatingRepository, input: SubmitInput, revision: i64) ![]const u8 {
+        var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+        
+        hasher.update(std.mem.asBytes(&input.rating_id));
+        hasher.update(std.mem.asBytes(&revision));
+        hasher.update(input.report_facts_json);
+        hasher.update(input.report_disclaimer);
+        hasher.update(input.report_conflict);
+        
+        var digest: [32]u8 = undefined;
+        hasher.final(&digest);
+        
+        const hex_chars = "0123456789abcdef";
+        var hex = try self.allocator.alloc(u8, 64);
+        for (digest, 0..) |b, i| {
+            hex[i * 2] = hex_chars[b >> 4];
+            hex[i * 2 + 1] = hex_chars[b & 0x0F];
+        }
+        return hex;
+    }
+
     // Submit rating: draft -> submitted (with atomic CAS transaction)
-    pub fn submit(self: *RatingRepository, rating_id: i64, analyst_id: i64) !bool {
+    pub fn submit(self: *RatingRepository, input: SubmitInput) !bool {
+        // Validate required report fields
+        if (input.report_facts_json.len == 0) return error.MissingFacts;
+        if (input.report_disclaimer.len == 0) return error.MissingDisclaimer;
+        if (input.report_conflict.len == 0) return error.MissingConflictDisclosure;
+        
         // BEGIN IMMEDIATE for write lock
         _ = try self.driver.exec("BEGIN IMMEDIATE", &.{});
         errdefer {
             _ = self.driver.exec("ROLLBACK", &.{}) catch {};
         }
         
-        // CAS UPDATE: only if draft status and correct analyst
+        // Get current revision
+        var rev_rows = try self.driver.query(
+            "SELECT revision FROM rating_draft WHERE id = ?1",
+            &.{.{ .int = input.rating_id }}
+        );
+        defer rev_rows.deinit();
+        
+        const revision = if (rev_rows.next()) |row| row.getInt(0) orelse 1 else 1;
+        
+        // Compute content hash
+        const content_hash = try self.computeSubmitHash(input, revision);
+        defer self.allocator.free(content_hash);
+        
+        // CAS UPDATE: freeze report content and hash at submission
         const update_sql =
             \\UPDATE rating_draft 
-            \\SET status = 'submitted', submitted_at = strftime('%s', 'now')
+            \\SET status = 'submitted', submitted_at = strftime('%s', 'now'),
+            \\    report_facts_json = ?3, report_disclaimer = ?4, report_conflict = ?5, content_hash = ?6
             \\WHERE id = ?1 AND analyst_id = ?2 AND status = 'draft'
         ;
         
         const result = try self.driver.exec(update_sql, &.{
-            .{ .int = rating_id },
-            .{ .int = analyst_id },
+            .{ .int = input.rating_id },
+            .{ .int = input.analyst_id },
+            .{ .string = input.report_facts_json },
+            .{ .string = input.report_disclaimer },
+            .{ .string = input.report_conflict },
+            .{ .string = content_hash },
         });
         
         // Check affected rows (CAS success = exactly 1 row)
@@ -202,12 +255,12 @@ pub const RatingRepository = struct {
         
         // Add audit in same transaction
         try self.addAuditInTx(.{
-            .rating_id = rating_id,
-            .actor_id = analyst_id,
+            .rating_id = input.rating_id,
+            .actor_id = input.analyst_id,
             .action = "submit",
             .from_status = "draft",
             .to_status = "submitted",
-            .revision = 1,
+            .revision = revision,
             .comment = null,
         });
         

@@ -10,6 +10,12 @@ pub fn runRatingMigrations(driver: *zent.sql_sqlite.SQLiteDriver) !void {
     _ = driver.exec("ALTER TABLE rating_draft ADD COLUMN submitted_at INTEGER", &.{}) catch {};
     _ = driver.exec("ALTER TABLE rating_draft ADD COLUMN reviewed_at INTEGER", &.{}) catch {};
     
+    // Report content fields (frozen at submit, approved by reviewer)
+    _ = driver.exec("ALTER TABLE rating_draft ADD COLUMN report_facts_json TEXT", &.{}) catch {};
+    _ = driver.exec("ALTER TABLE rating_draft ADD COLUMN report_disclaimer TEXT", &.{}) catch {};
+    _ = driver.exec("ALTER TABLE rating_draft ADD COLUMN report_conflict TEXT", &.{}) catch {};
+    _ = driver.exec("ALTER TABLE rating_draft ADD COLUMN content_hash TEXT", &.{}) catch {};
+    
     // Migrate old created_by to analyst_id if needed
     _ = driver.exec("UPDATE rating_draft SET analyst_id = created_by WHERE analyst_id IS NULL AND created_by IS NOT NULL", &.{}) catch {};
     

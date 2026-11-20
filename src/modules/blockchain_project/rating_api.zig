@@ -335,7 +335,23 @@ fn handleSubmit(ctx: *http.Context) !void {
     var rating_repo = rating_repository.RatingRepository.init(self.sqlite_driver, self.allocator);
     
     // Submit with atomic CAS transaction (includes audit)
-    const success = try rating_repo.submit(rating_id, user_id);
+    // TODO: Accept report fields from request body
+    const submit_input = rating_repository.RatingRepository.SubmitInput{
+        .rating_id = rating_id,
+        .analyst_id = user_id,
+        .report_facts_json = "{\"summary\":\"Placeholder facts\"}",
+        .report_disclaimer = "DISCLAIMER: This is a placeholder disclaimer.",
+        .report_conflict = "No conflicts disclosed.",
+    };
+    
+    const success = rating_repo.submit(submit_input) catch |err| {
+        if (err == error.MissingFacts or err == error.MissingDisclaimer or err == error.MissingConflictDisclosure) {
+            try ctx.json(400, "{\"error\":\"Missing required report fields\"}");
+            return;
+        }
+        return err;
+    };
+    
     if (!success) {
         try ctx.json(409, "{\"error\":\"Cannot submit: not draft status or not analyst\"}");
         return;

@@ -68,7 +68,138 @@ pub const PublishRepository = struct {
         return hex;
     }
 
-    // Publish approved rating (atomic transaction)
+    // Publish from approved rating (no new content accepted)
+    pub fn publishFromApproved(self: *PublishRepository, rating_id: i64, project_id: i64, publisher_id: i64) !i64 {
+        // BEGIN IMMEDIATE transaction
+        _ = try self.driver.exec("BEGIN IMMEDIATE", &.{});
+        errdefer {
+            _ = self.driver.exec("ROLLBACK", &.{}) catch {};
+        }
+        
+        // Read approved rating with frozen content
+        var check_rows = try self.driver.query(
+            \\SELECT status, revision, published_grade, confidence, analyst_id, reviewer_id, reviewed_at,
+            \\  report_facts_json, report_disclaimer, report_conflict, content_hash
+            \\FROM rating_draft WHERE id = ?1 AND project_id = ?2
+        , &.{
+            .{ .int = rating_id },
+            .{ .int = project_id },
+        });
+        defer check_rows.deinit();
+        
+        const row = check_rows.next() orelse {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return error.RatingNotFound;
+        };
+        
+        const status = row.getText(0) orelse return error.InvalidStatus;
+        if (!std.mem.eql(u8, status, "approved")) {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return error.NotApproved;
+        }
+        
+        const revision = row.getInt(1) orelse return error.MissingRevision;
+        const published_grade = row.getText(2) orelse return error.MissingGrade;
+        const confidence = row.getInt(3) orelse return error.MissingConfidence;
+        const analyst_id = row.getInt(4) orelse return error.MissingAnalyst;
+        const reviewer_id = row.getInt(5) orelse return error.MissingReviewer;
+        const approved_at = row.getInt(6) orelse return error.MissingApprovedAt;
+        
+        // Validate required report fields frozen at submission
+        const facts_json = row.getText(7) orelse {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return error.MissingFacts;
+        };
+        const disclaimer = row.getText(8) orelse {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return error.MissingDisclaimer;
+        };
+        const conflict = row.getText(9) orelse {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return error.MissingConflictDisclosure;
+        };
+        const content_hash = row.getText(10) orelse {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return error.MissingContentHash;
+        };
+        
+        if (facts_json.len == 0 or disclaimer.len == 0 or conflict.len == 0) {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return error.MissingRequiredFields;
+        }
+        
+        // Check for duplicate publish (same hash)
+        var dup_check = try self.driver.query(
+            "SELECT id FROM published_report WHERE content_hash = ?1",
+            &.{.{ .string = content_hash }}
+        );
+        defer dup_check.deinit();
+        
+        if (dup_check.next()) |_| {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return error.AlreadyPublished;
+        }
+        
+        // Build scores_json
+        const scores_json = try std.fmt.allocPrint(self.allocator,
+            "{{\"grade\":\"{s}\",\"confidence\":{d}}}",
+            .{ published_grade, confidence }
+        );
+        defer self.allocator.free(scores_json);
+        
+        // Insert published report
+        const insert_sql =
+            \\INSERT INTO published_report (
+            \\  rating_id, project_id, revision, published_grade, confidence,
+            \\  facts_json, scores_json, disclaimer_text, conflict_disclosure,
+            \\  evidence_sources, methodology_version, content_hash,
+            \\  analyst_id, reviewer_id, approved_at, published_at, publisher_id, status
+            \\) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, strftime('%s','now'), ?16, 'published')
+        ;
+        
+        const result = try self.driver.exec(insert_sql, &.{
+            .{ .int = rating_id },
+            .{ .int = project_id },
+            .{ .int = revision },
+            .{ .string = published_grade },
+            .{ .int = confidence },
+            .{ .string = facts_json },
+            .{ .string = scores_json },
+            .{ .string = disclaimer },
+            .{ .string = conflict },
+            .{ .string = "[]" }, // evidence_sources placeholder
+            .{ .string = "v1.0" },
+            .{ .string = content_hash },
+            .{ .int = analyst_id },
+            .{ .int = reviewer_id },
+            .{ .int = approved_at },
+            .{ .int = publisher_id },
+        });
+        
+        if (!result.rows_affected_known or result.rows_affected != 1) {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return error.PublishFailed;
+        }
+        
+        const report_id = result.last_insert_id orelse return error.NoInsertId;
+        
+        // Add audit entry
+        _ = try self.driver.exec(
+            \\INSERT INTO rating_audit (rating_id, actor_id, action, from_status, to_status, revision)
+            \\VALUES (?1, ?2, 'publish', 'approved', 'published', ?3)
+        , &.{
+            .{ .int = rating_id },
+            .{ .int = publisher_id },
+            .{ .int = revision },
+        });
+        
+        // Commit transaction
+        _ = try self.driver.exec("COMMIT", &.{});
+        
+        return report_id;
+    }
+
+    // Publish approved rating (atomic transaction) - OLD METHOD
     pub fn publish(self: *PublishRepository, input: PublishInput, publisher_id: i64) !i64 {
         // Validate content requirements
         try validateContent(input);
@@ -265,7 +396,8 @@ pub const PublishRepository = struct {
 
     // List all published reports
     pub fn listPublished(self: *PublishRepository) !std.ArrayList(PublishedReport) {
-        var list = std.ArrayList(PublishedReport).init(self.allocator);
+        const ListType = std.ArrayList(PublishedReport);
+        var list = ListType.init(self.allocator);
         errdefer list.deinit();
         
         const sql =
