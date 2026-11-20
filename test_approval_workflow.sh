@@ -61,9 +61,9 @@ echo "  Rating ID: $RATING_ID"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/projects/$PROJ_ID/ratings/$RATING_ID/submit" -H "Authorization: Bearer $TOKEN_A")
 assert_code "T3: A submits rating" "200" "$CODE"
 
-# T4: A tries to self-approve → 409
+# T4: A tries to self-approve → 403 (explicit permission check)
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/projects/$PROJ_ID/ratings/$RATING_ID/approve" -H "Authorization: Bearer $TOKEN_A")
-assert_code "T4: Self-approve rejected" "409" "$CODE"
+assert_code "T4: Self-approve rejected" "403" "$CODE"
 
 # T5: B approves → 200
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/projects/$PROJ_ID/ratings/$RATING_ID/approve" -H "Authorization: Bearer $TOKEN_B")
@@ -73,9 +73,21 @@ assert_code "T5: B approves rating" "200" "$CODE"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/projects/$PROJ_ID/ratings/$RATING_ID/approve" -H "Authorization: Bearer $TOKEN_B")
 assert_code "T6: Duplicate approve rejected" "409" "$CODE"
 
-# T7: Check audit log
+# T7: Check audit log (should be exactly 3: create, submit, approve)
 AUDIT_COUNT=$(sqlite3 "$DB" "SELECT COUNT(*) FROM rating_audit WHERE rating_id = $RATING_ID;")
-assert_code "T7: Audit entries exist" "pass" "$([ "$AUDIT_COUNT" -ge 3 ] && echo pass || echo fail)"
+assert_code "T7: Audit exactly 3 entries" "pass" "$([ "$AUDIT_COUNT" -eq 3 ] && echo pass || echo fail)"
+
+# T8: Self-review should not modify reviewer fields
+BEFORE_REVIEWER=$(sqlite3 "$DB" "SELECT reviewer_id FROM rating_draft WHERE id = $RATING_ID;")
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/projects/$PROJ_ID/ratings/$RATING_ID/approve" -H "Authorization: Bearer $TOKEN_A")
+AFTER_REVIEWER=$(sqlite3 "$DB" "SELECT reviewer_id FROM rating_draft WHERE id = $RATING_ID;")
+assert_code "T8: Self-review no field change" "pass" "$([ "$BEFORE_REVIEWER" = "$AFTER_REVIEWER" ] && echo pass || echo fail)"
+
+# T9: Normal user cannot approve
+RESP_N=$(curl -s -X POST "$API/auth/register" -H "Content-Type: application/json" -d '{"email":"normal@t.co","password":"Pass123!","name":"Normal"}')
+TOKEN_N=$(echo "$RESP_N" | grep -o '"token":"[^"]*' | cut -d'"' -f4)
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/projects/$PROJ_ID/ratings/999/approve" -H "Authorization: Bearer $TOKEN_N")
+assert_code "T9: Normal user approve forbidden" "403" "$CODE"
 
 echo ""
 echo "=== Approval Tests: $PASS passed, $FAIL failed ==="

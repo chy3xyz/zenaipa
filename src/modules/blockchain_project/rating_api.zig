@@ -245,11 +245,40 @@ fn handleGetDraft(ctx: *http.Context) !void {
         return;
     };
 
-    // Simplified - just confirm it exists
-    _ = self;
-    _ = project_id;
-    _ = rating_id;
-    try ctx.json(200, "{\"message\":\"Rating GET placeholder\"}");
+    var rating_repo = rating_repository.RatingRepository.init(self.sqlite_driver, self.allocator);
+    const rating_opt = try rating_repo.getByIdAndProject(rating_id, project_id);
+    
+    if (rating_opt) |rating| {
+        const rf_str = rating.red_flags orelse "null";
+        const response_json = try std.fmt.allocPrint(self.allocator,
+            \\{{"id":{d},"project_id":{d},"model_version":"{s}","c1_tech":{?d},"c2_team":{?d},"c3_token":{?d},"c4_product":{?d},"c5_community":{?d},"c6_governance":{?d},"confidence":{d},"red_flags":{s},"base_grade":"{s}","redflag_grade":"{s}","shadow_grade":"{s}","published_grade":"{s}","analyst_id":{d},"reviewer_id":{?d},"status":"{s}","revision":{d},"created_at":{d}}}
+        , .{
+            rating.id,
+            rating.project_id,
+            rating.model_version,
+            rating.c1_tech,
+            rating.c2_team,
+            rating.c3_token,
+            rating.c4_product,
+            rating.c5_community,
+            rating.c6_governance,
+            rating.confidence,
+            rf_str,
+            rating.base_grade,
+            rating.redflag_grade,
+            rating.shadow_grade,
+            rating.published_grade,
+            rating.analyst_id,
+            rating.reviewer_id,
+            rating.status,
+            rating.revision,
+            rating.created_at,
+        });
+        defer self.allocator.free(response_json);
+        try ctx.json(200, response_json);
+    } else {
+        try ctx.json(404, "{\"error\":\"Rating not found for this project\"}");
+    }
 }
 
 fn checkAdminPermission(ctx: *http.Context, user_id: i64) bool {
@@ -340,14 +369,21 @@ fn handleApprove(ctx: *http.Context) !void {
     
     var rating_repo = rating_repository.RatingRepository.init(self.sqlite_driver, self.allocator);
     
-    // Approve with CAS (prevents self-review and invalid state transition)
-    const success = try rating_repo.approve(rating_id, user_id);
-    if (!success) {
-        try ctx.json(409, "{\"error\":\"Cannot approve: not submitted, self-review, or already reviewed\"}");
+    // First check self-review explicitly (403 Forbidden)
+    const is_self_review = try rating_repo.isSelfReview(rating_id, user_id);
+    if (is_self_review) {
+        try ctx.json(403, "{\"error\":\"Forbidden: cannot review own rating\"}");
         return;
     }
     
-    // Add audit
+    // Approve with CAS (prevents invalid state transition and duplicates)
+    const success = try rating_repo.approve(rating_id, user_id);
+    if (!success) {
+        try ctx.json(409, "{\"error\":\"Cannot approve: not submitted or already reviewed\"}");
+        return;
+    }
+    
+    // Add audit (TODO: in same transaction)
     try rating_repo.addAudit(.{
         .rating_id = rating_id,
         .actor_id = user_id,
@@ -386,14 +422,21 @@ fn handleReject(ctx: *http.Context) !void {
     
     var rating_repo = rating_repository.RatingRepository.init(self.sqlite_driver, self.allocator);
     
-    // Reject with CAS
-    const success = try rating_repo.reject(rating_id, user_id);
-    if (!success) {
-        try ctx.json(409, "{\"error\":\"Cannot reject: not submitted, self-review, or already reviewed\"}");
+    // First check self-review explicitly (403 Forbidden)
+    const is_self_review = try rating_repo.isSelfReview(rating_id, user_id);
+    if (is_self_review) {
+        try ctx.json(403, "{\"error\":\"Forbidden: cannot review own rating\"}");
         return;
     }
     
-    // Add audit
+    // Reject with CAS (prevents invalid state transition and duplicates)
+    const success = try rating_repo.reject(rating_id, user_id);
+    if (!success) {
+        try ctx.json(409, "{\"error\":\"Cannot reject: not submitted or already reviewed\"}");
+        return;
+    }
+    
+    // Add audit (TODO: in same transaction)
     try rating_repo.addAudit(.{
         .rating_id = rating_id,
         .actor_id = user_id,

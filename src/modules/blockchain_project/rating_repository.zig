@@ -95,6 +95,65 @@ pub const RatingRepository = struct {
         return error.NoInsertId;
     }
     
+    pub fn getByIdAndProject(self: *RatingRepository, rating_id: i64, project_id: i64) !?RatingDraftRow {
+        const sql =
+            \\SELECT id, project_id, model_version, input_json, c1_tech, c2_team, 
+            \\  c3_token, c4_product, c5_community, c6_governance, confidence, 
+            \\  red_flags, base_grade, redflag_grade, shadow_grade, published_grade,
+            \\  analyst_id, reviewer_id, status, revision, created_at, submitted_at, reviewed_at
+            \\FROM rating_draft 
+            \\WHERE id = ?1 AND project_id = ?2
+        ;
+        
+        var rows = try self.driver.query(sql, &.{
+            .{ .int = rating_id },
+            .{ .int = project_id },
+        });
+        defer rows.deinit();
+        
+        if (rows.next()) |row| {
+            return RatingDraftRow{
+                .id = row.getInt(0) orelse return null,
+                .project_id = row.getInt(1) orelse return null,
+                .model_version = row.getText(2) orelse return null,
+                .input_json = row.getText(3) orelse return null,
+                .c1_tech = row.getInt(4),
+                .c2_team = row.getInt(5),
+                .c3_token = row.getInt(6),
+                .c4_product = row.getInt(7),
+                .c5_community = row.getInt(8),
+                .c6_governance = row.getInt(9),
+                .confidence = row.getInt(10) orelse return null,
+                .red_flags = row.getText(11),
+                .base_grade = row.getText(12) orelse return null,
+                .redflag_grade = row.getText(13) orelse return null,
+                .shadow_grade = row.getText(14) orelse return null,
+                .published_grade = row.getText(15) orelse return null,
+                .analyst_id = row.getInt(16) orelse return null,
+                .reviewer_id = row.getInt(17),
+                .status = row.getText(18) orelse return null,
+                .revision = row.getInt(19) orelse return null,
+                .created_at = row.getInt(20) orelse return null,
+                .submitted_at = row.getInt(21),
+                .reviewed_at = row.getInt(22),
+            };
+        }
+        return null;
+    }
+
+    pub fn isSelfReview(self: *RatingRepository, rating_id: i64, reviewer_id: i64) !bool {
+        const sql = "SELECT analyst_id FROM rating_draft WHERE id = ?1";
+        var rows = try self.driver.query(sql, &.{.{ .int = rating_id }});
+        defer rows.deinit();
+        
+        if (rows.next()) |row| {
+            if (row.getInt(0)) |analyst_id| {
+                return analyst_id == reviewer_id;
+            }
+        }
+        return false;
+    }
+
     // Submit rating: draft -> submitted (with CAS)
     pub fn submit(self: *RatingRepository, rating_id: i64, analyst_id: i64) !bool {
         const sql =
@@ -121,12 +180,31 @@ pub const RatingRepository = struct {
         return false;
     }
     
-    // Approve rating: submitted -> approved (with CAS, prevent self-review)
+    // Approve rating: submitted -> approved (with CAS to prevent duplicates)
     pub fn approve(self: *RatingRepository, rating_id: i64, reviewer_id: i64) !bool {
+        // Pre-check: if already reviewed, fail immediately
+        var pre_check = try self.driver.query(
+            "SELECT reviewer_id, reviewed_at FROM rating_draft WHERE id = ?1",
+            &.{.{ .int = rating_id }}
+        );
+        defer pre_check.deinit();
+        
+        var old_reviewed_at: ?i64 = null;
+        if (pre_check.next()) |row| {
+            if (row.getInt(0)) |_| {
+                // reviewer_id is already set - this is a duplicate
+                return false;
+            }
+            old_reviewed_at = row.getInt(1);
+        } else {
+            return false; // Rating doesn't exist
+        }
+        
+        // Execute UPDATE with CAS conditions
         const sql =
             \\UPDATE rating_draft 
             \\SET status = 'approved', reviewer_id = ?2, reviewed_at = strftime('%s', 'now')
-            \\WHERE id = ?1 AND status = 'submitted' AND analyst_id != ?2
+            \\WHERE id = ?1 AND status = 'submitted' AND reviewer_id IS NULL
         ;
         
         _ = try self.driver.exec(sql, &.{
@@ -134,25 +212,54 @@ pub const RatingRepository = struct {
             .{ .int = reviewer_id },
         });
         
-        // Verify state changed
-        var verify_rows = try self.driver.query("SELECT status FROM rating_draft WHERE id = ?1", &.{.{ .int = rating_id }});
-        defer verify_rows.deinit();
+        // Verify reviewed_at changed (proves UPDATE succeeded)
+        var post_check = try self.driver.query(
+            "SELECT reviewed_at FROM rating_draft WHERE id = ?1",
+            &.{.{ .int = rating_id }}
+        );
+        defer post_check.deinit();
         
-        if (verify_rows.next()) |row| {
-            if (row.getText(0)) |status| {
-                return std.mem.eql(u8, status, "approved");
+        if (post_check.next()) |row| {
+            const new_reviewed_at = row.getInt(0);
+            // If reviewed_at changed from NULL or previous value, UPDATE succeeded
+            if (old_reviewed_at == null and new_reviewed_at != null) {
+                return true;
+            }
+            if (old_reviewed_at) |old| {
+                if (new_reviewed_at) |new| {
+                    return new != old;
+                }
             }
         }
         
         return false;
     }
     
-    // Reject rating: submitted -> rejected (with CAS, prevent self-review)
+    // Reject rating: submitted -> rejected (with CAS to prevent duplicates)
     pub fn reject(self: *RatingRepository, rating_id: i64, reviewer_id: i64) !bool {
+        // Pre-check: if already reviewed, fail immediately
+        var pre_check = try self.driver.query(
+            "SELECT reviewer_id, reviewed_at FROM rating_draft WHERE id = ?1",
+            &.{.{ .int = rating_id }}
+        );
+        defer pre_check.deinit();
+        
+        var old_reviewed_at: ?i64 = null;
+        if (pre_check.next()) |row| {
+            if (row.getInt(0)) |_| {
+                // reviewer_id is already set - this is a duplicate
+                return false;
+            }
+            old_reviewed_at = row.getInt(1);
+        } else {
+            return false; // Rating doesn't exist
+        }
+        
+        // Execute UPDATE with CAS conditions
         const sql =
             \\UPDATE rating_draft 
             \\SET status = 'rejected', reviewer_id = ?2, reviewed_at = strftime('%s', 'now')
-            \\WHERE id = ?1 AND status = 'submitted' AND analyst_id != ?2
+            \\WHERE id = ?1 AND status = 'submitted' AND reviewer_id IS NULL
         ;
         
         _ = try self.driver.exec(sql, &.{
@@ -160,13 +267,23 @@ pub const RatingRepository = struct {
             .{ .int = reviewer_id },
         });
         
-        // Verify state changed
-        var verify_rows = try self.driver.query("SELECT status FROM rating_draft WHERE id = ?1", &.{.{ .int = rating_id }});
-        defer verify_rows.deinit();
+        // Verify reviewed_at changed (proves UPDATE succeeded)
+        var post_check = try self.driver.query(
+            "SELECT reviewed_at FROM rating_draft WHERE id = ?1",
+            &.{.{ .int = rating_id }}
+        );
+        defer post_check.deinit();
         
-        if (verify_rows.next()) |row| {
-            if (row.getText(0)) |status| {
-                return std.mem.eql(u8, status, "rejected");
+        if (post_check.next()) |row| {
+            const new_reviewed_at = row.getInt(0);
+            // If reviewed_at changed from NULL or previous value, UPDATE succeeded
+            if (old_reviewed_at == null and new_reviewed_at != null) {
+                return true;
+            }
+            if (old_reviewed_at) |old| {
+                if (new_reviewed_at) |new| {
+                    return new != old;
+                }
             }
         }
         
