@@ -32,7 +32,30 @@ pub fn ProjectApi(comptime Service: type) type {
             };
             defer result.deinit(ctx.allocator);
             
-            try ctx.json(200, result);
+            // 简化：返回简单JSON数组
+            var json_buf = std.ArrayList(u8).empty;
+            defer json_buf.deinit(ctx.allocator);
+            
+            try json_buf.appendSlice(ctx.allocator, "{\"items\":[");
+            for (result.items, 0..) |item, i| {
+                if (i > 0) try json_buf.append(ctx.allocator, ',');
+                const item_json = std.fmt.allocPrint(ctx.allocator,
+                    \\{{"id":{d},"name":"{s}","slug":"{s}","sector":"{s}","status":"{s}"}}
+                , .{ item.id, item.name, item.slug, item.sector, item.status }) catch {
+                    try ctx.text(500, "Internal server error");
+                    return;
+                };
+                defer ctx.allocator.free(item_json);
+                try json_buf.appendSlice(ctx.allocator, item_json);
+            }
+            const total_json = std.fmt.allocPrint(ctx.allocator, "],\"total\":{d}}}", .{result.total}) catch {
+                try ctx.text(500, "Internal server error");
+                return;
+            };
+            defer ctx.allocator.free(total_json);
+            try json_buf.appendSlice(ctx.allocator, total_json);
+            
+            try ctx.json(200, json_buf.items);
         }
 
         fn getProject(ctx: *http.Context) !void {
@@ -58,39 +81,51 @@ pub fn ProjectApi(comptime Service: type) type {
             };
             defer project.deinit(ctx.allocator);
             
-            try ctx.json(200, project);
+            const json_str = std.fmt.allocPrint(ctx.allocator,
+                \\{{"id":{d},"name":"{s}","slug":"{s}","sector":"{s}","status":"{s}"}}
+            , .{ project.id, project.name, project.slug, project.sector, project.status }) catch {
+                try ctx.text(500, "Internal server error");
+                return;
+            };
+            defer ctx.allocator.free(json_str);
+            try ctx.json(200, json_str);
         }
 
         fn createProject(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
             
-            // 简化：任何认证用户都可以创建（实际应检查admin权限）
             const req = ctx.bindJsonLoose(struct {
                 name: []const u8,
                 slug: []const u8,
-                sector: []const u8,
-                status: []const u8,
+                sector: ?[]const u8 = null,
+                status: ?[]const u8 = null,
                 description: ?[]const u8 = null,
-                website: ?[]const u8 = null,
+                official_url: ?[]const u8 = null,
             }) catch {
                 try ctx.sendErrorResponse(400, 400, "请求体格式错误");
                 return;
             };
             
-            const project_id = self.service.createProject(ctx.allocator, .{
-                .name = req.name,
-                .slug = req.slug,
-                .sector = req.sector,
-                .status = req.status,
-                .description = req.description,
-                .website = req.website,
-            }) catch |err| {
+            const project_id = self.service.createProject(
+                ctx.allocator,
+                req.name,
+                req.slug,
+                req.sector,
+                req.status,
+                req.description,
+                req.official_url,
+            ) catch |err| {
                 std.log.err("createProject error: {s}", .{@errorName(err)});
                 try ctx.text(500, "Create failed");
                 return;
             };
             
-            try ctx.json(201, .{ .id = project_id });
+            const result_json = std.fmt.allocPrint(ctx.allocator, "{{\"id\":{d}}}", .{project_id}) catch {
+                try ctx.text(500, "Internal server error");
+                return;
+            };
+            defer ctx.allocator.free(result_json);
+            try ctx.json(201, result_json);
         }
 
         fn updateProject(ctx: *http.Context) !void {

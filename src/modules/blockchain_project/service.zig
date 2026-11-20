@@ -14,15 +14,20 @@ pub const ProjectService = struct {
     pub fn createProject(
         self: *ProjectService,
         _: std.mem.Allocator,
-        data: anytype,
+        name: []const u8,
+        slug: []const u8,
+        sector: ?[]const u8,
+        status: ?[]const u8,
+        description: ?[]const u8,
+        website: ?[]const u8,
     ) !i64 {
         return try self.repo.create(
-            data.name,
-            data.slug,
-            data.sector orelse "Other",
-            data.status orelse "active",
-            data.description,
-            data.website,
+            name,
+            slug,
+            if (sector) |s| s else "Other",
+            if (status) |st| st else "active",
+            description,
+            website,
         );
     }
 
