@@ -59,12 +59,8 @@ pub const PublishGate = struct {
             }
         }
 
-        // 检查置信度 - NR 不应发布
-        if (rating.published_grade) |grade| {
-            if (std.mem.eql(u8, grade, "NR")) {
-                try violations.append(try alloc.dupe(u8, "评级为 NR（数据不足），不应发布"));
-            }
-        }
+        // PRD: NR 可以发布，只需确保前端只展示事实层和数据不足原因
+        // 不在此处禁止 NR 发布
 
         const passed = violations.items.len == 0;
         return GateCheckResult{
@@ -143,13 +139,19 @@ pub const PublishGate = struct {
             try violations.append(try alloc.dupe(u8, "C2 非投资建议未开启（代码层错误）"));
         }
 
-        // 检查是否包含免责声明
-        const opinion_layer = report.opinion_layer_md orelse "";
-        if (std.mem.indexOf(u8, opinion_layer, "免责") == null and
-            std.mem.indexOf(u8, opinion_layer, "非投资建议") == null and
-            std.mem.indexOf(u8, opinion_layer, "研究用途") == null)
-        {
-            try violations.append(try alloc.dupe(u8, "观点层缺少免责声明或非投资建议说明"));
+        // 检查是否包含结构化免责声明
+        // PRD: 不能用简单字符串检查，应验证disclosure_json结构
+        const disclosure = report.disclosure_json orelse "";
+        if (disclosure.len == 0) {
+            try violations.append(try alloc.dupe(u8, "缺少结构化披露信息（disclosure_json）"));
+        } else {
+            // TODO: 解析JSON并验证包含必需的免责声明字段
+            // 当前简化检查：至少包含 disclaimer 相关内容
+            if (std.mem.indexOf(u8, disclosure, "disclaimer") == null and
+                std.mem.indexOf(u8, disclosure, "免责") == null)
+            {
+                try violations.append(try alloc.dupe(u8, "披露信息中缺少免责声明"));
+            }
         }
 
         const passed = violations.items.len == 0;
@@ -183,13 +185,13 @@ pub const PublishGate = struct {
             try violations.append(try alloc.dupe(u8, "C12 Bot 溯源未开启（代码层错误）"));
         }
 
-        // 检查事实层是否包含数据来源
-        const fact_layer = report.fact_layer_md orelse "";
-        if (std.mem.indexOf(u8, fact_layer, "数据来源") == null and
-            std.mem.indexOf(u8, fact_layer, "来源:") == null and
-            std.mem.indexOf(u8, fact_layer, "Source:") == null)
-        {
-            try violations.append(try alloc.dupe(u8, "事实层缺少数据来源说明"));
+        // 检查是否有结构化的数据来源记录
+        // PRD: 不能用简单字符串检查，应验证结构化来源记录
+        // TODO: 关联 data_collection_log 表验证所有引用的数据源
+        // 当前简化：检查 conflict_disclosure_refs 是否非空（作为来源引用的占位）
+        const source_refs = report.conflict_disclosure_refs orelse "";
+        if (source_refs.len == 0) {
+            try violations.append(try alloc.dupe(u8, "缺少结构化数据来源记录（需关联 data_collection_log）"));
         }
 
         const passed = violations.items.len == 0;

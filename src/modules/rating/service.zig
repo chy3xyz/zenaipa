@@ -178,11 +178,9 @@ pub const RatingService = struct {
             return RatingServiceError.PublishGateFailed;
         }
 
-        // 4. NR 不应发布（置信度检查）
-        if (std.mem.eql(u8, rating.base_grade, "NR")) {
-            std.log.err("评级为 NR（数据不足），不应发布", .{});
-            return RatingServiceError.PublishGateFailed;
-        }
+        // 4. NR 可以发布，但需要确保只展示事实层
+        // PRD要求：数据不足可以发布事实层与NR，不得发布虚假的数字分或S-D
+        // 前端应特殊处理NR，只显示事实层和数据不足原因
 
         // 5. 记录发布时间
         const now = std.time.timestamp();
