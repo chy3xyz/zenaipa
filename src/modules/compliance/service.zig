@@ -1,4 +1,5 @@
 const std = @import("std");
+const zent = @import("zent");
 const persistence = @import("persistence.zig");
 const gates = @import("gates.zig");
 const ComplianceStore = persistence.ComplianceStore;

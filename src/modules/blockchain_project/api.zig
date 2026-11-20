@@ -8,7 +8,11 @@ pub fn BlockchainProjectApi(comptime Service: type) type {
 
         const Self = @This();
 
-        pub fn registerRoutes(self: *Self, router: *http.Router) !void {
+        pub fn init(service: *Service) Self {
+            return .{ .service = service };
+        }
+
+        pub fn registerRoutes(self: *Self, router: anytype) !void {
             try router.get("/api/v1/blockchain/projects", http.handler(Self, "list", self));
             try router.get("/api/v1/blockchain/projects/:id", http.handler(Self, "get", self));
             try router.post("/api/v1/blockchain/projects", http.handler(Self, "create", self));

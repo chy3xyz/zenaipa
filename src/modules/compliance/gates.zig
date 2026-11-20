@@ -26,7 +26,7 @@ pub const PublishGate = struct {
     pub fn checkPublishable(
         self: *PublishGate,
         alloc: std.mem.Allocator,
-        rating: anytype,
+        _: anytype, // rating (unused in current implementation)
         report: anytype,
     ) !GateCheckResult {
         var violations = std.ArrayList([]const u8).init(alloc);

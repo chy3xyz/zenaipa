@@ -1,7 +1,11 @@
 const zmodu = @import("zmodu");
 
-pub const Module = zmodu.api.Module{
+pub const info = zmodu.api.Module{
     .name = "blockchain_project",
-    .init = null,
-    .deinit = null,
+    .description = "blockchain project management and evaluation",
+    .dependencies = &.{},
+    .is_internal = false,
 };
+
+pub fn init() !void {}
+pub fn deinit() void {}

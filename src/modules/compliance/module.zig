@@ -1,7 +1,11 @@
 const zmodu = @import("zmodu");
 
-pub const Module = zmodu.api.Module{
+pub const info = zmodu.api.Module{
     .name = "compliance",
-    .init = null,
-    .deinit = null,
+    .description = "compliance gates and publish control",
+    .dependencies = &.{},
+    .is_internal = false,
 };
+
+pub fn init() !void {}
+pub fn deinit() void {}

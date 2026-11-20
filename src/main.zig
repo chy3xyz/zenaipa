@@ -37,6 +37,12 @@ const audit = @import("modules/audit/root.zig");
 const mail_template = @import("modules/mail_template/root.zig");
 const ai = @import("modules/ai/root.zig");
 
+// 区块链评级模块（核心功能）
+const blockchain_project = @import("modules/blockchain_project/root.zig");
+const rating = @import("modules/rating/root.zig");
+const compliance = @import("modules/compliance/root.zig");
+// TODO: data_collection, three_source, report 模块待完整实现
+
 /// Set by SIGINT/SIGTERM so the main thread can stop the server gracefully.
 const ShutdownFlag = struct {
     var requested = std.atomic.Value(bool).init(false);
@@ -205,6 +211,16 @@ pub fn main(init: std.process.Init) !void {
     });
     defer ai_svc.deinit();
 
+    // 区块链评级服务初始化（核心功能）
+    var project_store = blockchain_project.persistence.ProjectStore.init(&store_env.client);
+    var project_svc = blockchain_project.service.ProjectService.init(&project_store);
+
+    var rating_store = rating.persistence.RatingStore.init(&store_env.client);
+    var rating_svc = rating.service.RatingService.init(&rating_store);
+
+    var compliance_store = compliance.persistence.ComplianceStore.init(&store_env.client);
+    var compliance_svc = compliance.service.ComplianceService.init(&compliance_store);
+
     // ── ZigModu module lifecycle (Application API: scan + validate + start/stop) ──
     var app = try zmodu.Application.init(io, allocator, "zenaipa", .{
         tenant.module,
@@ -217,6 +233,9 @@ pub fn main(init: std.process.Init) !void {
         audit.module,
         mail_template.module,
         ai.module,
+        blockchain_project.module,
+        rating.module,
+        compliance.module,
     }, .{});
     defer app.deinit();
     try app.start();
@@ -283,6 +302,12 @@ pub fn main(init: std.process.Init) !void {
     var audit_api = audit.api.AuditApi(@TypeOf(audit_svc), @TypeOf(user_svc)).init(&audit_svc, &user_svc);
     var mail_template_api = mail_template.api.MailTemplateApi(@TypeOf(template_svc), @TypeOf(user_svc)).init(&template_svc, &user_svc);
     var ai_api = ai.api.AiApi(@TypeOf(ai_svc), @TypeOf(user_svc)).init(&ai_svc, &user_svc);
+    
+    // 区块链评级 API 初始化（核心功能）
+    var blockchain_project_api = blockchain_project.api.BlockchainProjectApi(@TypeOf(project_svc)).init(&project_svc);
+    var rating_api = rating.api.RatingApi(@TypeOf(rating_svc)).init(&rating_svc);
+    var compliance_api = compliance.api.ComplianceApi(@TypeOf(compliance_svc)).init(&compliance_svc);
+    
     var system_api = system.api.SystemApi(@TypeOf(cache), @TypeOf(task_svc)).init(
         &cache,
         &task_svc,
@@ -339,6 +364,11 @@ pub fn main(init: std.process.Init) !void {
     try mail_template_api.registerRoutes(&v1);
     try ai_api.registerRoutes(&v1);
     try system_api.registerRoutes(&v1);
+    
+    // 区块链评级路由注册（核心功能）
+    try blockchain_project_api.registerRoutes(&router);
+    try rating_api.registerRoutes(&router);
+    try compliance_api.registerRoutes(&router);
 
     // Health: liveness at the server root (probe convention) and readiness
     // under the API prefix (checks the data store).

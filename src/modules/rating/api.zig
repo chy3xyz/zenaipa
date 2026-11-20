@@ -9,7 +9,11 @@ pub fn RatingApi(comptime Service: type) type {
 
         const Self = @This();
 
-        pub fn registerRoutes(self: *Self, router: *http.Router) !void {
+        pub fn init(service: *Service) Self {
+            return .{ .service = service };
+        }
+
+        pub fn registerRoutes(self: *Self, router: anytype) !void {
             try router.post("/api/v1/ratings", http.handler(Self, "create", self));
             try router.post("/api/v1/ratings/:id/submit", http.handler(Self, "submit", self));
             try router.post("/api/v1/ratings/:id/review", http.handler(Self, "review", self));
