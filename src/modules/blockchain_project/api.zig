@@ -77,7 +77,7 @@ pub fn ProjectApi(comptime Service: type) type {
                 return;
             };
             
-            const project = self.service.getProject(ctx.allocator, id) catch |err| {
+            _ = self.service.getProject(ctx.allocator, id) catch |err| {
                 if (err == error.NotFound) {
                     try ctx.sendErrorResponse(404, 404, "项目不存在");
                     return;
