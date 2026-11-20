@@ -36,7 +36,15 @@ pub const ProjectService = struct {
         _: std.mem.Allocator,
         id: i64,
     ) !ProjectRow {
-        return try self.repo.getById(id) orelse error.NotFound;
+        std.log.info("[service.getProject] Calling repo.getById({d})", .{id});
+        const result = try self.repo.getById(id);
+        if (result) |proj| {
+            std.log.info("[service.getProject] Found project: {s}", .{proj.name});
+            return proj;
+        } else {
+            std.log.info("[service.getProject] Not found, returning error", .{});
+            return error.NotFound;
+        }
     }
 
     pub fn listProjects(

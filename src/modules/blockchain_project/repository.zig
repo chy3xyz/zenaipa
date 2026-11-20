@@ -79,10 +79,12 @@ pub const ProjectRepository = struct {
         
         if (rows.next()) |row| {
             const proj_id = row.getInt(0) orelse return null;
-            const name = row.getText(1) orelse return null;
-            const slug = row.getText(2) orelse return null;
-            const sector = row.getText(3) orelse return null;
-            const status = row.getText(4) orelse return null;
+            const name = row.getText(1) orelse "";
+            const slug = row.getText(2) orelse "";
+            const sector = row.getText(3) orelse "Other";
+            const status = row.getText(4) orelse "active";
+            const description = row.getText(5);
+            const official_url = row.getText(6);
             
             return ProjectRow{
                 .id = proj_id,
@@ -90,8 +92,8 @@ pub const ProjectRepository = struct {
                 .slug = try self.allocator.dupe(u8, slug),
                 .sector = try self.allocator.dupe(u8, sector),
                 .status = try self.allocator.dupe(u8, status),
-                .description = if (row.getText(5)) |d| try self.allocator.dupe(u8, d) else null,
-                .official_url = if (row.getText(6)) |u| try self.allocator.dupe(u8, u) else null,
+                .description = if (description) |d| try self.allocator.dupe(u8, d) else null,
+                .official_url = if (official_url) |u| try self.allocator.dupe(u8, u) else null,
             };
         }
         return null;

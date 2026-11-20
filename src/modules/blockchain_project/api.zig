@@ -59,9 +59,12 @@ pub fn ProjectApi(comptime Service: type) type {
         }
 
         fn getProject(ctx: *http.Context) !void {
+            std.log.info("[API.getProject] Handler called", .{});
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
             
+            std.log.info("[API.getProject] Getting path param", .{});
             const id_str = ctx.pathParam("id") orelse {
+                std.log.info("[API.getProject] pathParam returned null", .{});
                 try ctx.sendErrorResponse(400, 400, "缺少id参数");
                 return;
             };
