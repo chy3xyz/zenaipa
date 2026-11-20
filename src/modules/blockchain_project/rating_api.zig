@@ -249,6 +249,17 @@ fn handleGetDraft(ctx: *http.Context) !void {
     const rating_opt = try rating_repo.getByIdAndProject(rating_id, project_id);
     
     if (rating_opt) |rating| {
+        defer {
+            self.allocator.free(rating.model_version);
+            self.allocator.free(rating.input_json);
+            if (rating.red_flags) |rf| self.allocator.free(rf);
+            self.allocator.free(rating.base_grade);
+            self.allocator.free(rating.redflag_grade);
+            self.allocator.free(rating.shadow_grade);
+            self.allocator.free(rating.published_grade);
+            self.allocator.free(rating.status);
+        }
+        
         const rf_str = rating.red_flags orelse "null";
         const response_json = try std.fmt.allocPrint(self.allocator,
             \\{{"id":{d},"project_id":{d},"model_version":"{s}","c1_tech":{?d},"c2_team":{?d},"c3_token":{?d},"c4_product":{?d},"c5_community":{?d},"c6_governance":{?d},"confidence":{d},"red_flags":{s},"base_grade":"{s}","redflag_grade":"{s}","shadow_grade":"{s}","published_grade":"{s}","analyst_id":{d},"reviewer_id":{?d},"status":"{s}","revision":{d},"created_at":{d}}}
@@ -323,23 +334,12 @@ fn handleSubmit(ctx: *http.Context) !void {
     
     var rating_repo = rating_repository.RatingRepository.init(self.sqlite_driver, self.allocator);
     
-    // Submit with CAS (only analyst can submit their own draft)
+    // Submit with atomic CAS transaction (includes audit)
     const success = try rating_repo.submit(rating_id, user_id);
     if (!success) {
         try ctx.json(409, "{\"error\":\"Cannot submit: not draft status or not analyst\"}");
         return;
     }
-    
-    // Add audit
-    try rating_repo.addAudit(.{
-        .rating_id = rating_id,
-        .actor_id = user_id,
-        .action = "submit",
-        .from_status = "draft",
-        .to_status = "submitted",
-        .revision = 1,
-        .comment = null,
-    });
     
     try ctx.json(200, "{\"message\":\"Rating submitted\"}");
 }
@@ -376,23 +376,12 @@ fn handleApprove(ctx: *http.Context) !void {
         return;
     }
     
-    // Approve with CAS (prevents invalid state transition and duplicates)
+    // Approve with atomic CAS transaction (includes audit)
     const success = try rating_repo.approve(rating_id, user_id);
     if (!success) {
         try ctx.json(409, "{\"error\":\"Cannot approve: not submitted or already reviewed\"}");
         return;
     }
-    
-    // Add audit (TODO: in same transaction)
-    try rating_repo.addAudit(.{
-        .rating_id = rating_id,
-        .actor_id = user_id,
-        .action = "approve",
-        .from_status = "submitted",
-        .to_status = "approved",
-        .revision = 1,
-        .comment = null,
-    });
     
     try ctx.json(200, "{\"message\":\"Rating approved\"}");
 }
@@ -429,23 +418,12 @@ fn handleReject(ctx: *http.Context) !void {
         return;
     }
     
-    // Reject with CAS (prevents invalid state transition and duplicates)
+    // Reject with atomic CAS transaction (includes audit)
     const success = try rating_repo.reject(rating_id, user_id);
     if (!success) {
         try ctx.json(409, "{\"error\":\"Cannot reject: not submitted or already reviewed\"}");
         return;
     }
-    
-    // Add audit (TODO: in same transaction)
-    try rating_repo.addAudit(.{
-        .rating_id = rating_id,
-        .actor_id = user_id,
-        .action = "reject",
-        .from_status = "submitted",
-        .to_status = "rejected",
-        .revision = 1,
-        .comment = null,
-    });
     
     try ctx.json(200, "{\"message\":\"Rating rejected\"}");
 }

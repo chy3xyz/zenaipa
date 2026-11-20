@@ -27,6 +27,16 @@ pub const RatingDraftRow = struct {
     reviewed_at: ?i64,
 };
 
+pub const AuditInput = struct {
+    rating_id: i64,
+    actor_id: i64,
+    action: []const u8,
+    from_status: ?[]const u8,
+    to_status: []const u8,
+    revision: i64,
+    comment: ?[]const u8,
+};
+
 pub const RatingRepository = struct {
     driver: *zent.sql_sqlite.SQLiteDriver,
     allocator: std.mem.Allocator,
@@ -112,11 +122,21 @@ pub const RatingRepository = struct {
         defer rows.deinit();
         
         if (rows.next()) |row| {
+            // Copy strings before rows.deinit() invalidates them
+            const model_version = try self.allocator.dupe(u8, row.getText(2) orelse return null);
+            const input_json = try self.allocator.dupe(u8, row.getText(3) orelse return null);
+            const red_flags = if (row.getText(11)) |rf| try self.allocator.dupe(u8, rf) else null;
+            const base_grade = try self.allocator.dupe(u8, row.getText(12) orelse return null);
+            const redflag_grade = try self.allocator.dupe(u8, row.getText(13) orelse return null);
+            const shadow_grade = try self.allocator.dupe(u8, row.getText(14) orelse return null);
+            const published_grade = try self.allocator.dupe(u8, row.getText(15) orelse return null);
+            const status = try self.allocator.dupe(u8, row.getText(18) orelse return null);
+            
             return RatingDraftRow{
                 .id = row.getInt(0) orelse return null,
                 .project_id = row.getInt(1) orelse return null,
-                .model_version = row.getText(2) orelse return null,
-                .input_json = row.getText(3) orelse return null,
+                .model_version = model_version,
+                .input_json = input_json,
                 .c1_tech = row.getInt(4),
                 .c2_team = row.getInt(5),
                 .c3_token = row.getInt(6),
@@ -124,14 +144,14 @@ pub const RatingRepository = struct {
                 .c5_community = row.getInt(8),
                 .c6_governance = row.getInt(9),
                 .confidence = row.getInt(10) orelse return null,
-                .red_flags = row.getText(11),
-                .base_grade = row.getText(12) orelse return null,
-                .redflag_grade = row.getText(13) orelse return null,
-                .shadow_grade = row.getText(14) orelse return null,
-                .published_grade = row.getText(15) orelse return null,
+                .red_flags = red_flags,
+                .base_grade = base_grade,
+                .redflag_grade = redflag_grade,
+                .shadow_grade = shadow_grade,
+                .published_grade = published_grade,
                 .analyst_id = row.getInt(16) orelse return null,
                 .reviewer_id = row.getInt(17),
-                .status = row.getText(18) orelse return null,
+                .status = status,
                 .revision = row.getInt(19) orelse return null,
                 .created_at = row.getInt(20) orelse return null,
                 .submitted_at = row.getInt(21),
@@ -154,152 +174,134 @@ pub const RatingRepository = struct {
         return false;
     }
 
-    // Submit rating: draft -> submitted (with CAS)
+    // Submit rating: draft -> submitted (with atomic CAS transaction)
     pub fn submit(self: *RatingRepository, rating_id: i64, analyst_id: i64) !bool {
-        const sql =
+        // BEGIN IMMEDIATE for write lock
+        _ = try self.driver.exec("BEGIN IMMEDIATE", &.{});
+        errdefer {
+            _ = self.driver.exec("ROLLBACK", &.{}) catch {};
+        }
+        
+        // CAS UPDATE: only if draft status and correct analyst
+        const update_sql =
             \\UPDATE rating_draft 
             \\SET status = 'submitted', submitted_at = strftime('%s', 'now')
             \\WHERE id = ?1 AND analyst_id = ?2 AND status = 'draft'
         ;
         
-        _ = try self.driver.exec(sql, &.{
+        const result = try self.driver.exec(update_sql, &.{
             .{ .int = rating_id },
             .{ .int = analyst_id },
         });
         
-        // Verify state changed
-        var verify_rows = try self.driver.query("SELECT status FROM rating_draft WHERE id = ?1", &.{.{ .int = rating_id }});
-        defer verify_rows.deinit();
-        
-        if (verify_rows.next()) |row| {
-            if (row.getText(0)) |status| {
-                return std.mem.eql(u8, status, "submitted");
-            }
+        // Check affected rows (CAS success = exactly 1 row)
+        if (!result.rows_affected_known or result.rows_affected != 1) {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return false;
         }
         
-        return false;
+        // Add audit in same transaction
+        try self.addAuditInTx(.{
+            .rating_id = rating_id,
+            .actor_id = analyst_id,
+            .action = "submit",
+            .from_status = "draft",
+            .to_status = "submitted",
+            .revision = 1,
+            .comment = null,
+        });
+        
+        // Commit transaction
+        _ = try self.driver.exec("COMMIT", &.{});
+        return true;
     }
     
-    // Approve rating: submitted -> approved (with CAS to prevent duplicates)
+    // Approve rating: submitted -> approved (with atomic CAS transaction)
     pub fn approve(self: *RatingRepository, rating_id: i64, reviewer_id: i64) !bool {
-        // Pre-check: if already reviewed, fail immediately
-        var pre_check = try self.driver.query(
-            "SELECT reviewer_id, reviewed_at FROM rating_draft WHERE id = ?1",
-            &.{.{ .int = rating_id }}
-        );
-        defer pre_check.deinit();
-        
-        var old_reviewed_at: ?i64 = null;
-        if (pre_check.next()) |row| {
-            if (row.getInt(0)) |_| {
-                // reviewer_id is already set - this is a duplicate
-                return false;
-            }
-            old_reviewed_at = row.getInt(1);
-        } else {
-            return false; // Rating doesn't exist
+        // BEGIN IMMEDIATE for write lock
+        _ = try self.driver.exec("BEGIN IMMEDIATE", &.{});
+        errdefer {
+            _ = self.driver.exec("ROLLBACK", &.{}) catch {};
         }
         
-        // Execute UPDATE with CAS conditions
-        const sql =
+        // CAS UPDATE: only if submitted status and not yet reviewed
+        const update_sql =
             \\UPDATE rating_draft 
             \\SET status = 'approved', reviewer_id = ?2, reviewed_at = strftime('%s', 'now')
             \\WHERE id = ?1 AND status = 'submitted' AND reviewer_id IS NULL
         ;
         
-        _ = try self.driver.exec(sql, &.{
+        const result = try self.driver.exec(update_sql, &.{
             .{ .int = rating_id },
             .{ .int = reviewer_id },
         });
         
-        // Verify reviewed_at changed (proves UPDATE succeeded)
-        var post_check = try self.driver.query(
-            "SELECT reviewed_at FROM rating_draft WHERE id = ?1",
-            &.{.{ .int = rating_id }}
-        );
-        defer post_check.deinit();
-        
-        if (post_check.next()) |row| {
-            const new_reviewed_at = row.getInt(0);
-            // If reviewed_at changed from NULL or previous value, UPDATE succeeded
-            if (old_reviewed_at == null and new_reviewed_at != null) {
-                return true;
-            }
-            if (old_reviewed_at) |old| {
-                if (new_reviewed_at) |new| {
-                    return new != old;
-                }
-            }
+        // Check affected rows (CAS success = exactly 1 row)
+        if (!result.rows_affected_known or result.rows_affected != 1) {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return false;
         }
         
-        return false;
+        // Add audit in same transaction
+        try self.addAuditInTx(.{
+            .rating_id = rating_id,
+            .actor_id = reviewer_id,
+            .action = "approve",
+            .from_status = "submitted",
+            .to_status = "approved",
+            .revision = 1,
+            .comment = null,
+        });
+        
+        // Commit transaction
+        _ = try self.driver.exec("COMMIT", &.{});
+        return true;
     }
     
-    // Reject rating: submitted -> rejected (with CAS to prevent duplicates)
+    // Reject rating: submitted -> rejected (with atomic CAS transaction)
     pub fn reject(self: *RatingRepository, rating_id: i64, reviewer_id: i64) !bool {
-        // Pre-check: if already reviewed, fail immediately
-        var pre_check = try self.driver.query(
-            "SELECT reviewer_id, reviewed_at FROM rating_draft WHERE id = ?1",
-            &.{.{ .int = rating_id }}
-        );
-        defer pre_check.deinit();
-        
-        var old_reviewed_at: ?i64 = null;
-        if (pre_check.next()) |row| {
-            if (row.getInt(0)) |_| {
-                // reviewer_id is already set - this is a duplicate
-                return false;
-            }
-            old_reviewed_at = row.getInt(1);
-        } else {
-            return false; // Rating doesn't exist
+        // BEGIN IMMEDIATE for write lock
+        _ = try self.driver.exec("BEGIN IMMEDIATE", &.{});
+        errdefer {
+            _ = self.driver.exec("ROLLBACK", &.{}) catch {};
         }
         
-        // Execute UPDATE with CAS conditions
-        const sql =
+        // CAS UPDATE: only if submitted status and not yet reviewed
+        const update_sql =
             \\UPDATE rating_draft 
             \\SET status = 'rejected', reviewer_id = ?2, reviewed_at = strftime('%s', 'now')
             \\WHERE id = ?1 AND status = 'submitted' AND reviewer_id IS NULL
         ;
         
-        _ = try self.driver.exec(sql, &.{
+        const result = try self.driver.exec(update_sql, &.{
             .{ .int = rating_id },
             .{ .int = reviewer_id },
         });
         
-        // Verify reviewed_at changed (proves UPDATE succeeded)
-        var post_check = try self.driver.query(
-            "SELECT reviewed_at FROM rating_draft WHERE id = ?1",
-            &.{.{ .int = rating_id }}
-        );
-        defer post_check.deinit();
-        
-        if (post_check.next()) |row| {
-            const new_reviewed_at = row.getInt(0);
-            // If reviewed_at changed from NULL or previous value, UPDATE succeeded
-            if (old_reviewed_at == null and new_reviewed_at != null) {
-                return true;
-            }
-            if (old_reviewed_at) |old| {
-                if (new_reviewed_at) |new| {
-                    return new != old;
-                }
-            }
+        // Check affected rows (CAS success = exactly 1 row)
+        if (!result.rows_affected_known or result.rows_affected != 1) {
+            _ = try self.driver.exec("ROLLBACK", &.{});
+            return false;
         }
         
-        return false;
+        // Add audit in same transaction
+        try self.addAuditInTx(.{
+            .rating_id = rating_id,
+            .actor_id = reviewer_id,
+            .action = "reject",
+            .from_status = "submitted",
+            .to_status = "rejected",
+            .revision = 1,
+            .comment = null,
+        });
+        
+        // Commit transaction
+        _ = try self.driver.exec("COMMIT", &.{});
+        return true;
     }
     
-    // Add audit entry
-    pub fn addAudit(self: *RatingRepository, input: struct {
-        rating_id: i64,
-        actor_id: i64,
-        action: []const u8,
-        from_status: ?[]const u8,
-        to_status: []const u8,
-        revision: i64,
-        comment: ?[]const u8,
-    }) !void {
+    // Add audit entry within existing transaction (no BEGIN/COMMIT)
+    fn addAuditInTx(self: *RatingRepository, input: AuditInput) !void {
         const sql =
             \\INSERT INTO rating_audit (rating_id, actor_id, action, from_status, to_status, revision, comment)
             \\VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -317,5 +319,10 @@ pub const RatingRepository = struct {
             .{ .int = input.revision },
             comment_val,
         });
+    }
+    
+    // Add audit entry (standalone with own transaction for create)
+    pub fn addAudit(self: *RatingRepository, input: AuditInput) !void {
+        try self.addAuditInTx(input);
     }
 };
