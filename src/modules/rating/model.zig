@@ -37,14 +37,14 @@ pub const MethodVersion = Schema("method_versions", .{
         field.Bool("enable_r6").Default(true), // 深度<5万
         
         // 规则参数
-        field.String("redflag_rules_json").Optional().Size(4000), // 红牌规则JSON
-        field.String("indicator_weights_json").Optional().Size(4000), // 指标权重JSON
-        field.String("normalization_json").Optional().Size(4000), // 归一化规则JSON
-        field.String("applicability_json").Optional().Size(2000), // 适用性规则JSON
+        field.String("redflag_rules_json").Optional().VarChar(4000), // 红牌规则JSON
+        field.String("indicator_weights_json").Optional().VarChar(4000), // 指标权重JSON
+        field.String("normalization_json").Optional().VarChar(4000), // 归一化规则JSON
+        field.String("applicability_json").Optional().VarChar(2000), // 适用性规则JSON
         
         // 审批
-        field.Date("effective_at").Optional(), // 生效日期
-        field.String("approval_refs").Optional().Size(1000), // 审批引用
+        field.Time("effective_at").Optional(), // 生效日期
+        field.String("approval_refs").Optional().VarChar(1000), // 审批引用
         field.String("canonical_hash").Optional(), // 规范哈希
         
         field.Int("tenant_id").Default(0),
@@ -63,13 +63,13 @@ pub const RatingInputSnapshot = Schema("rating_input_snapshots", .{
         field.String("as_of"), // 评估时点 ISO8601
         
         // 输入数据引用（JSON或逗号分隔ID）
-        field.String("metric_value_refs").Optional().Size(4000),
-        field.String("override_refs").Optional().Size(2000),
-        field.String("source_hashes").Optional().Size(2000),
+        field.String("metric_value_refs").Optional().VarChar(4000),
+        field.String("override_refs").Optional().VarChar(2000),
+        field.String("source_hashes").Optional().VarChar(2000),
         
         // 适用性与缺失
-        field.String("applicability_json").Optional().Size(2000),
-        field.String("missing_list").Optional().Size(2000),
+        field.String("applicability_json").Optional().VarChar(2000),
+        field.String("missing_list").Optional().VarChar(2000),
         
         // 生命周期
         field.String("stage_ref").Optional(), // 生命周期阶段引用
@@ -118,7 +118,7 @@ pub const Rating = Schema("ratings", .{
         field.Int("confidence_three").Default(0), // 三源置信度（预留）
         
         // 红牌
-        field.String("redflags").Optional().Size(1000), // JSON数组: ["R1","R3"]
+        field.String("redflags").Optional().VarChar(1000), // JSON数组: ["R1","R3"]
         field.Bool("compound_warning").Default(false), // 复合预警
         
         // 三源状态（预留）
@@ -133,9 +133,9 @@ pub const Rating = Schema("ratings", .{
         // 审批
         field.Int("analyst_id").Optional(), // 分析师 user_id
         field.Int("reviewer_id").Optional(), // 复核人 user_id
-        field.Date("submitted_at").Optional(),
-        field.Date("issued_at").Optional(), // 签发时间
-        field.Date("published_at").Optional(), // 发布时间
+        field.Time("submitted_at").Optional(),
+        field.Time("issued_at").Optional(), // 签发时间
+        field.Time("published_at").Optional(), // 发布时间
         
         // 存证
         field.String("content_hash").Optional(), // 内容哈希
@@ -163,9 +163,9 @@ pub const DimensionEvidence = Schema("dimension_evidence", .{
         field.String("metric_value").Optional(), // 原始值
         field.String("normalized_value").Optional(), // 归一化值
         field.Int("weight_in_dimension").Default(0), // 维度内权重 0-1000
-        field.String("rationale").Optional().Size(1000), // 理由
+        field.String("rationale").Optional().VarChar(1000), // 理由
         field.Int("metric_snapshot_id").Optional(), // 关联数据快照ID
-        field.String("evidence_refs").Optional().Size(1000), // 证据链接
+        field.String("evidence_refs").Optional().VarChar(1000), // 证据链接
         field.String("method_version"), // 方法论版本
         field.Int("tenant_id").Default(0),
     },
@@ -183,26 +183,26 @@ pub const RatingReview = Schema("rating_reviews", .{
         field.Int("reviewer_person_id"), // 复核人自然人ID
         
         // 逐维评论
-        field.String("tech_comment").Optional().Size(1000),
-        field.String("team_comment").Optional().Size(1000),
-        field.String("tokenomics_comment").Optional().Size(1000),
-        field.String("community_comment").Optional().Size(1000),
-        field.String("liquidity_comment").Optional().Size(1000),
-        field.String("compliance_comment").Optional().Size(1000),
-        field.String("overall_comment").Optional().Size(2000),
+        field.String("tech_comment").Optional().VarChar(1000),
+        field.String("team_comment").Optional().VarChar(1000),
+        field.String("tokenomics_comment").Optional().VarChar(1000),
+        field.String("community_comment").Optional().VarChar(1000),
+        field.String("liquidity_comment").Optional().VarChar(1000),
+        field.String("compliance_comment").Optional().VarChar(1000),
+        field.String("overall_comment").Optional().VarChar(2000),
         
         // 决策
         field.String("decision").Default("pending"), // pending/approved/rejected
-        field.String("rejection_reason").Optional().Size(1000),
+        field.String("rejection_reason").Optional().VarChar(1000),
         
         // 时间戳
-        field.Date("submitted_at").Optional(),
-        field.Date("reviewed_at").Optional(),
+        field.Time("submitted_at").Optional(),
+        field.Time("reviewed_at").Optional(),
         
         // 审计
         field.String("reviewer_ip").Optional(),
-        field.String("evidence_refs").Optional().Size(1000),
-        field.String("conflict_disclosure_ref").Optional().Size(1000),
+        field.String("evidence_refs").Optional().VarChar(1000),
+        field.String("conflict_disclosure_ref").Optional().VarChar(1000),
         
         field.Int("tenant_id").Default(0),
     },
@@ -228,18 +228,18 @@ pub const RatingChange = Schema("rating_changes", .{
         field.Int("to_score"),
         
         // 逐维差异（JSON）
-        field.String("diff_by_dimension").Optional().Size(2000),
+        field.String("diff_by_dimension").Optional().VarChar(2000),
         
         // 原因
-        field.String("reason").Optional().Size(2000),
+        field.String("reason").Optional().VarChar(2000),
         field.String("change_type").Default("normal"), // normal/redflag/shadow/correction
         
         // 公告
-        field.Date("announced_at").Optional(),
+        field.Time("announced_at").Optional(),
         field.Int("announced_by").Optional(), // user_id
         
         // 审批
-        field.String("approval_refs").Optional().Size(1000),
+        field.String("approval_refs").Optional().VarChar(1000),
         
         field.Int("tenant_id").Default(0),
     },

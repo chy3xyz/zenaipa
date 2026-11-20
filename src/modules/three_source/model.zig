@@ -9,22 +9,22 @@ pub const Claim = Schema("claims", .{
         field.Int("project_id"),
         
         // 宣称内容
-        field.String("claim_text").Size(4000), // 原文
-        field.String("claim_archive_url").Optional().Size(500), // 存档链接
+        field.String("claim_text").VarChar(4000), // 原文
+        field.String("claim_archive_url").Optional().VarChar(500), // 存档链接
         field.String("claimed_by"), // 发布主体
-        field.Date("claimed_at").Optional(), // 宣称时间
+        field.Time("claimed_at").Optional(), // 宣称时间
         
         // 宣称指标
         field.String("claimed_metric").Optional(), // 宣称的指标
         field.String("claimed_value").Optional(), // 宣称的值
         field.String("claimed_unit").Optional(), // 单位
-        field.String("claimed_scope").Optional().Size(500), // 范围
+        field.String("claimed_scope").Optional().VarChar(500), // 范围
         field.String("claimed_time_period").Optional(), // 时间周期
         
         // 核验状态
         field.String("verification_status").Default("pending"), // pending/verified/disputed/unverifiable
         field.Int("verified_by").Optional(), // 核验人 user_id
-        field.Date("verified_at").Optional(),
+        field.Time("verified_at").Optional(),
         
         field.Int("tenant_id").Default(0),
     },
@@ -42,7 +42,7 @@ pub const ClaimVerification = Schema("claim_verifications", .{
         field.String("observed_value_ref").Optional(), // 观测值引用
         
         // 对齐口径
-        field.String("alignment_notes").Optional().Size(2000), // 口径对齐说明
+        field.String("alignment_notes").Optional().VarChar(2000), // 口径对齐说明
         field.String("metric_alignment").Optional(), // 指标对齐情况
         field.String("scope_alignment").Optional(), // 范围对齐情况
         field.String("time_alignment").Optional(), // 时间对齐情况
@@ -50,20 +50,20 @@ pub const ClaimVerification = Schema("claim_verifications", .{
         // 差异计算
         field.String("difference_value").Optional(), // 差异值
         field.Int("difference_percentage").Default(0), // 差异百分比（千分比）
-        field.String("difference_calculation").Optional().Size(1000), // 差异计算说明
+        field.String("difference_calculation").Optional().VarChar(1000), // 差异计算说明
         
         // 证据覆盖
         field.Int("evidence_coverage").Default(0), // 证据覆盖度 0-100
-        field.String("coverage_gaps").Optional().Size(1000), // 覆盖缺口
+        field.String("coverage_gaps").Optional().VarChar(1000), // 覆盖缺口
         
         // 核验结论
         field.String("verification_result"), // consistent/minor_deviation/major_deviation/contradictory/insufficient
-        field.String("conclusion_notes").Optional().Size(2000),
+        field.String("conclusion_notes").Optional().VarChar(2000),
         
         // 审批
         field.Int("verifier_id").Optional(), // 核验人
         field.Int("reviewer_id").Optional(), // 复核人
-        field.Date("verified_at").Optional(),
+        field.Time("verified_at").Optional(),
         
         // 版本
         field.Int("version").Default(1),
@@ -84,14 +84,14 @@ pub const RoadmapCommitment = Schema("roadmap_commitments", .{
         field.Int("project_id"),
         
         // 承诺内容
-        field.String("commitment_text").Size(4000), // 原文
-        field.String("evidence_url").Optional().Size(500), // 证据链接
-        field.Date("announced_at").Optional(), // 公告时间
-        field.Date("original_due_at").Optional(), // 原定期限
-        field.Date("revised_due_at").Optional(), // 修订期限
+        field.String("commitment_text").VarChar(4000), // 原文
+        field.String("evidence_url").Optional().VarChar(500), // 证据链接
+        field.Time("announced_at").Optional(), // 公告时间
+        field.Time("original_due_at").Optional(), // 原定期限
+        field.Time("revised_due_at").Optional(), // 修订期限
         
         // 验收定义
-        field.String("acceptance_criteria").Optional().Size(2000), // 验收标准
+        field.String("acceptance_criteria").Optional().VarChar(2000), // 验收标准
         field.String("verifiability").Default("unknown"), // verifiable/partially/unverifiable
         
         // 分母冻结
@@ -99,10 +99,10 @@ pub const RoadmapCommitment = Schema("roadmap_commitments", .{
         
         // 状态
         field.String("status").Default("pending"), // pending/in_progress/delivered/delayed/cancelled/partially_delivered
-        field.Date("delivered_at").Optional(), // 交付时间
-        field.String("delivery_evidence").Optional().Size(2000), // 交付证据
-        field.String("delay_reason").Optional().Size(1000), // 延期原因
-        field.String("partial_completion_note").Optional().Size(1000), // 部分完成说明
+        field.Time("delivered_at").Optional(), // 交付时间
+        field.String("delivery_evidence").Optional().VarChar(2000), // 交付证据
+        field.String("delay_reason").Optional().VarChar(1000), // 延期原因
+        field.String("partial_completion_note").Optional().VarChar(1000), // 部分完成说明
         
         // 版本链
         field.Int("supersedes_id").Optional(),
@@ -123,28 +123,28 @@ pub const GovernanceProposal = Schema("governance_proposals", .{
         field.Int("project_id"),
         
         // 提案信息
-        field.String("proposal_text").Size(4000), // 提案内容
+        field.String("proposal_text").VarChar(4000), // 提案内容
         field.String("proposal_category").Optional(), // 类别
-        field.Date("passed_at").Optional(), // 通过时间
+        field.Time("passed_at").Optional(), // 通过时间
         
         // 执行
-        field.Date("execution_due_at").Optional(), // 应执行日期
-        field.String("execution_conditions").Optional().Size(1000), // 执行条件
+        field.Time("execution_due_at").Optional(), // 应执行日期
+        field.String("execution_conditions").Optional().VarChar(1000), // 执行条件
         field.Bool("is_executable").Default(true), // 是否可执行
         field.Bool("is_applicable").Default(true), // 是否适用（纯意见提案可能不适用）
         
         // 执行状态
         field.String("execution_status").Default("pending"), // pending/executed/cancelled/delayed
-        field.Date("executed_at").Optional(),
-        field.String("execution_tx_ref").Optional().Size(500), // 执行交易引用
-        field.String("delivery_refs").Optional().Size(2000), // 交付证据
+        field.Time("executed_at").Optional(),
+        field.String("execution_tx_ref").Optional().VarChar(500), // 执行交易引用
+        field.String("delivery_refs").Optional().VarChar(2000), // 交付证据
         
         // 核验
         field.String("verification_status").Default("unverified"), // verified/pending/unverified
         
         // 分母冻结
         field.String("denominator_freeze_ref").Optional(),
-        field.String("revision_history").Optional().Size(2000), // 修订历史
+        field.String("revision_history").Optional().VarChar(2000), // 修订历史
         
         field.Int("tenant_id").Default(0),
     },
@@ -167,27 +167,27 @@ pub const RevenueBreakdown = Schema("revenue_breakdowns", .{
         field.String("currency").Default("USD"),
         
         // 总收入
-        field.BigInt("gross_revenue_cents").Default(0), // 总收入（美分）
+        field.Int("gross_revenue_cents").Default(0), // 总收入（美分）
         
         // 拆分明细
         field.String("line_item_id").Optional(), // 明细行ID
         field.String("revenue_category").Optional(), // 收入类别: fee/subscription/yield/other
-        field.BigInt("line_amount_cents").Default(0), // 明细金额
+        field.Int("line_amount_cents").Default(0), // 明细金额
         
         // 激励与关联方
-        field.BigInt("incentive_included_amount_cents").Default(0), // 包含的激励金额
-        field.BigInt("related_party_amount_cents").Default(0), // 关联方金额
+        field.Int("incentive_included_amount_cents").Default(0), // 包含的激励金额
+        field.Int("related_party_amount_cents").Default(0), // 关联方金额
         field.Bool("incentive_related_party_overlap").Default(false), // 两类是否重叠
         
         // 真实需求（RDS计算）
-        field.BigInt("qualified_demand_amount_cents").Default(0), // 合格需求金额
-        field.BigInt("unidentified_amount_cents").Default(0), // 未识别金额
+        field.Int("qualified_demand_amount_cents").Default(0), // 合格需求金额
+        field.Int("unidentified_amount_cents").Default(0), // 未识别金额
         
         // 来源与复核
-        field.String("source_refs").Optional().Size(1000),
+        field.String("source_refs").Optional().VarChar(1000),
         field.Int("reviewed_by").Optional(),
-        field.Date("reviewed_at").Optional(),
-        field.String("review_notes").Optional().Size(1000),
+        field.Time("reviewed_at").Optional(),
+        field.String("review_notes").Optional().VarChar(1000),
         
         field.Int("tenant_id").Default(0),
     },
@@ -204,13 +204,13 @@ pub const Principle = Schema("principles", .{
         field.Int("project_id"),
         
         // 主张内容
-        field.String("principle_text").Size(4000), // 核心主张原文
+        field.String("principle_text").VarChar(4000), // 核心主张原文
         field.Int("principle_version").Default(1), // 版本
-        field.Date("principle_frozen_at").Optional(), // 冻结日期
+        field.Time("principle_frozen_at").Optional(), // 冻结日期
         
         // 来源
-        field.String("source_document").Optional().Size(500), // 来源文档
-        field.String("source_url").Optional().Size(500),
+        field.String("source_document").Optional().VarChar(500), // 来源文档
+        field.String("source_url").Optional().VarChar(500),
         
         field.Int("tenant_id").Default(0),
     },
@@ -229,29 +229,29 @@ pub const TccConflict = Schema("tcc_conflicts", .{
         
         // 决策信息
         field.String("decision_id").Optional(), // 决策ID
-        field.Date("occurred_at").Optional(), // 发生时间
-        field.String("conflict_evidence").Size(4000), // 冲突证据
+        field.Time("occurred_at").Optional(), // 发生时间
+        field.String("conflict_evidence").VarChar(4000), // 冲突证据
         
         // 严重性
         field.String("severity").Default("medium"), // low/medium/high/critical
         field.Int("severity_score").Default(0), // 严重性分数（待定义）
         
         // 项目回应
-        field.String("project_response").Optional().Size(2000),
+        field.String("project_response").Optional().VarChar(2000),
         
         // 分析结论
-        field.String("analysis_conclusion").Optional().Size(2000),
+        field.String("analysis_conclusion").Optional().VarChar(2000),
         field.Int("analyst_id").Optional(),
         field.Int("reviewer_id").Optional(),
-        field.Date("analyzed_at").Optional(),
+        field.Time("analyzed_at").Optional(),
         
         // 去重
         field.String("dedupe_key").Optional(),
         
         // 解决
         field.Bool("is_resolved").Default(false),
-        field.Date("resolved_at").Optional(),
-        field.String("resolution_note").Optional().Size(1000),
+        field.Time("resolved_at").Optional(),
+        field.String("resolution_note").Optional().VarChar(1000),
         
         field.Int("tenant_id").Default(0),
     },
@@ -273,20 +273,20 @@ pub const ProjectStage = Schema("project_stages", .{
         // 判断依据
         field.String("sector_applicability").Optional(), // 适用赛道
         field.Int("launch_age_days").Optional(), // 上线天数
-        field.BigInt("tvl_value_cents").Optional(), // TVL值（美分）
+        field.Int("tvl_value_cents").Optional(), // TVL值（美分）
         field.String("tvl_currency").Optional(),
-        field.Date("tvl_as_of").Optional(),
+        field.Time("tvl_as_of").Optional(),
         field.Bool("tvl_applicable").Default(false), // TVL是否适用该赛道
         
         // 评估记录
-        field.String("assessment_basis").Optional().Size(1000), // 判断依据
+        field.String("assessment_basis").Optional().VarChar(1000), // 判断依据
         field.Int("assessed_by").Optional(),
         field.Int("approved_by").Optional(),
-        field.Date("assessed_at").Optional(),
+        field.Time("assessed_at").Optional(),
         
         // 有效期
-        field.Date("valid_from").Optional(),
-        field.Date("valid_to").Optional(),
+        field.Time("valid_from").Optional(),
+        field.Time("valid_to").Optional(),
         
         field.Int("tenant_id").Default(0),
     },
@@ -334,7 +334,7 @@ pub const ThreeSourceAssessment = Schema("three_source_assessments", .{
         
         // 评审
         field.Int("assessor_id").Optional(),
-        field.Date("assessed_at").Optional(),
+        field.Time("assessed_at").Optional(),
         field.String("work_hours_note").Optional(), // 额外工时记录
         
         field.Int("tenant_id").Default(0),
@@ -357,11 +357,11 @@ pub const CoherenceAssessment = Schema("coherence_assessments", .{
         field.Int("d_meaning_material").Optional(), // 义物偏离 0-1000
         
         // 每对证据与适用性
-        field.String("d_ms_evidence").Optional().Size(2000),
+        field.String("d_ms_evidence").Optional().VarChar(2000),
         field.Bool("d_ms_applicable").Default(false),
-        field.String("d_sm_evidence").Optional().Size(2000),
+        field.String("d_sm_evidence").Optional().VarChar(2000),
         field.Bool("d_sm_applicable").Default(false),
-        field.String("d_mm_evidence").Optional().Size(2000),
+        field.String("d_mm_evidence").Optional().VarChar(2000),
         field.Bool("d_mm_applicable").Default(false),
         
         // 合恰度

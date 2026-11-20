@@ -9,9 +9,9 @@ pub const RatingReport = Schema("rating_reports", .{
         field.Int("rating_id"), // 关联 ratings.id
         
         // 三层内容（Markdown格式）
-        field.String("fact_layer_md").Optional().Size(8000), // 事实层
-        field.String("score_layer_md").Optional().Size(8000), // 评分层
-        field.String("opinion_layer_md").Optional().Size(8000), // 观点层
+        field.String("fact_layer_md").Optional().VarChar(8000), // 事实层
+        field.String("score_layer_md").Optional().VarChar(8000), // 评分层
+        field.String("opinion_layer_md").Optional().VarChar(8000), // 观点层
         
         // 状态
         field.String("status").Default("draft"), // draft/published/superseded/withdrawn
@@ -19,17 +19,17 @@ pub const RatingReport = Schema("rating_reports", .{
         // 签发信息
         field.Int("analyst_id").Optional(), // 分析师
         field.Int("reviewer_id").Optional(), // 复核人
-        field.Date("issued_at").Optional(), // 签发时间
-        field.Date("published_at").Optional(), // 发布时间
+        field.Time("issued_at").Optional(), // 签发时间
+        field.Time("published_at").Optional(), // 发布时间
         
         // 存证
         field.String("content_hash"), // 内容哈希（三层内容+元数据）
         field.String("chain_anchor_tx").Optional(), // 链上锚定交易（可选）
-        field.Date("anchored_at").Optional(),
+        field.Time("anchored_at").Optional(),
         
         // 披露
-        field.String("disclosure_json").Optional().Size(2000), // 披露信息JSON
-        field.String("conflict_disclosure_refs").Optional().Size(1000), // 利益冲突披露引用
+        field.String("disclosure_json").Optional().VarChar(2000), // 披露信息JSON
+        field.String("conflict_disclosure_refs").Optional().VarChar(1000), // 利益冲突披露引用
         
         // 版本
         field.Int("supersedes_id").Optional(), // 替代的旧报告ID
@@ -55,27 +55,27 @@ pub const ContentAsset = Schema("content_assets", .{
         field.Int("rating_report_id").Optional(),
         
         // 变体（多尺寸）
-        field.String("variants_json").Optional().Size(4000), // {"1:1": "path1", "9:16": "path2", "16:9": "path3"}
+        field.String("variants_json").Optional().VarChar(4000), // {"1:1": "path1", "9:16": "path2", "16:9": "path3"}
         
         // 发布渠道
-        field.String("published_channels").Optional().Size(1000), // 逗号分隔: twitter,telegram,wechat
+        field.String("published_channels").Optional().VarChar(1000), // 逗号分隔: twitter,telegram,wechat
         field.String("tracking_shortlink").Optional(), // 追踪短链
         
         // 内容
         field.String("card_title").Optional(),
         field.String("card_subtitle").Optional(),
-        field.String("card_data_json").Optional().Size(4000), // 卡片数据JSON
+        field.String("card_data_json").Optional().VarChar(4000), // 卡片数据JSON
         
         // 哈希
         field.String("card_hash").Optional(), // 卡片内容哈希
         
         // 渠道链接记录
-        field.String("distribution_refs").Optional().Size(2000), // 分发记录引用（逗号分隔ID）
+        field.String("distribution_refs").Optional().VarChar(2000), // 分发记录引用（逗号分隔ID）
         
         // 撤回状态
         field.Bool("is_withdrawn").Default(false),
-        field.Date("withdrawn_at").Optional(),
-        field.String("withdrawal_reason").Optional().Size(1000),
+        field.Time("withdrawn_at").Optional(),
+        field.String("withdrawal_reason").Optional().VarChar(1000),
         
         field.Int("tenant_id").Default(0),
     },
@@ -97,29 +97,29 @@ pub const DistributionRecord = Schema("distribution_records", .{
         
         // 渠道
         field.String("platform"), // twitter/telegram/wechat/linkedin/discord/website
-        field.String("published_url").Optional().Size(1000), // 发布URL
+        field.String("published_url").Optional().VarChar(1000), // 发布URL
         field.String("platform_post_id").Optional(), // 平台帖子ID
         
         // 操作
         field.Int("operator_id"), // 操作人 user_id
-        field.Date("published_at").Optional(),
+        field.Time("published_at").Optional(),
         
         // 撤回
         field.Bool("retract_requested").Default(false),
-        field.Date("retract_requested_at").Optional(),
+        field.Time("retract_requested_at").Optional(),
         field.Bool("retract_completed").Default(false),
-        field.Date("retract_completed_at").Optional(),
+        field.Time("retract_completed_at").Optional(),
         field.String("retract_method").Optional(), // delete/edit/watermark
         
         // 状态
         field.String("status").Default("published"), // published/retracted/failed
-        field.String("failure_reason").Optional().Size(1000),
+        field.String("failure_reason").Optional().VarChar(1000),
         
         // 补偿通知任务
         field.String("compensation_task_id").Optional(), // 补偿通知任务ID
         
         // 动态核验URL
-        field.String("verification_url").Optional().Size(500),
+        field.String("verification_url").Optional().VarChar(500),
         
         field.Int("tenant_id").Default(0),
     },
@@ -149,17 +149,17 @@ pub const RatingAttestation = Schema("rating_attestations", .{
         field.String("contract_address").Optional(), // 存证合约地址
         field.String("transaction_hash").Optional(), // 交易哈希
         field.Int("block_number").Optional(), // 区块号
-        field.Date("anchored_at").Optional(), // 上链时间
+        field.Time("anchored_at").Optional(), // 上链时间
         
         // IPFS（如适用）
         field.String("ipfs_cid").Optional(), // IPFS CID
         
         // 核验状态
         field.String("verification_status").Default("pending"), // pending/confirmed/failed
-        field.String("verification_url").Optional().Size(500), // 核验链接
+        field.String("verification_url").Optional().VarChar(500), // 核验链接
         
         // 元数据
-        field.String("attestation_metadata").Optional().Size(2000), // 额外元数据JSON
+        field.String("attestation_metadata").Optional().VarChar(2000), // 额外元数据JSON
         
         field.Int("tenant_id").Default(0),
     },
@@ -180,7 +180,7 @@ pub const Channel = Schema("channels", .{
         
         // 短链
         field.String("short_code").Optional().Unique(), // 短链代码
-        field.String("target_url").Optional().Size(1000), // 目标URL
+        field.String("target_url").Optional().VarChar(1000), // 目标URL
         
         // UTM参数
         field.String("utm_source").Optional(),
@@ -199,7 +199,7 @@ pub const Channel = Schema("channels", .{
         
         // 状态
         field.Bool("is_active").Default(true),
-        field.Date("expires_at").Optional(),
+        field.Time("expires_at").Optional(),
         
         field.Int("tenant_id").Default(0),
     },
@@ -243,7 +243,7 @@ pub const AttributionEvent = Schema("attribution_events", .{
         field.String("unknown_reason").Optional(), // cross_device/no_tracking/opt_out
         
         // 属性
-        field.String("event_properties").Optional().Size(2000), // 事件属性JSON
+        field.String("event_properties").Optional().VarChar(2000), // 事件属性JSON
         
         field.Int("tenant_id").Default(0),
     },

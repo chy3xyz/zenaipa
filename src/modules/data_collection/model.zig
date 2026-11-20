@@ -10,8 +10,8 @@ pub const DataSource = Schema("data_sources", .{
         field.String("source_type").Default("api"), // api/scraper/manual/csv
         
         // 连接信息
-        field.String("endpoint_url").Optional().Size(500),
-        field.String("api_key_encrypted").Optional().Size(500), // 加密的API密钥
+        field.String("endpoint_url").Optional().VarChar(500),
+        field.String("api_key_encrypted").Optional().VarChar(500), // 加密的API密钥
         
         // 授权与限制
         field.String("license_type").Optional(), // 许可类型
@@ -21,7 +21,7 @@ pub const DataSource = Schema("data_sources", .{
         
         // 可靠性
         field.String("reliability_tier").Default("unverified"), // verified/trusted/unverified
-        field.String("supported_fields").Optional().Size(1000), // 支持的字段（逗号分隔）
+        field.String("supported_fields").Optional().VarChar(1000), // 支持的字段（逗号分隔）
         
         // 更新频率
         field.String("update_frequency").Default("daily"), // realtime/hourly/daily/weekly/manual
@@ -34,8 +34,8 @@ pub const DataSource = Schema("data_sources", .{
         
         // 状态
         field.String("status").Default("active"), // active/inactive/deprecated
-        field.Date("last_checked_at").Optional(),
-        field.String("last_error").Optional().Size(1000),
+        field.Time("last_checked_at").Optional(),
+        field.String("last_error").Optional().VarChar(1000),
         
         field.Int("tenant_id").Default(0),
     },
@@ -59,13 +59,13 @@ pub const RawObservation = Schema("raw_observations", .{
         field.String("fetched_at"), // 实际抓取时点
         
         // 原始数据
-        field.String("raw_payload_ref").Optional().Size(1000), // 大payload存储引用
+        field.String("raw_payload_ref").Optional().VarChar(1000), // 大payload存储引用
         field.String("payload_hash"), // payload哈希
-        field.String("raw_json").Optional().Size(8000), // 小payload可直接存
+        field.String("raw_json").Optional().VarChar(8000), // 小payload可直接存
         
         // HTTP状态
         field.Int("http_status").Optional(),
-        field.String("http_error").Optional().Size(500),
+        field.String("http_error").Optional().VarChar(500),
         
         // 数据元信息
         field.String("unit").Optional(), // 单位
@@ -76,7 +76,7 @@ pub const RawObservation = Schema("raw_observations", .{
         
         // 质量
         field.String("data_quality").Default("unknown"), // good/medium/poor/unknown
-        field.String("quality_notes").Optional().Size(500),
+        field.String("quality_notes").Optional().VarChar(500),
         
         field.Int("tenant_id").Default(0),
     },
@@ -103,17 +103,17 @@ pub const MetricValue = Schema("metric_values", .{
         // 人工覆盖
         field.Int("manual_override_id").Optional(), // 人工覆盖记录ID
         field.String("manual_value").Optional(), // 人工设置的值
-        field.String("manual_reason").Optional().Size(1000), // 覆盖原因
+        field.String("manual_reason").Optional().VarChar(1000), // 覆盖原因
         field.Int("approved_by").Optional(), // 批准人 user_id
-        field.Date("approved_at").Optional(),
+        field.Time("approved_at").Optional(),
         
         // 有效值引用
         field.String("effective_value_ref"), // 指向实际使用的值（auto或manual）
         field.String("effective_value"), // 实际使用的值
         
         // 有效期
-        field.Date("valid_from").Optional(),
-        field.Date("valid_to").Optional(),
+        field.Time("valid_from").Optional(),
+        field.Time("valid_to").Optional(),
         
         // 版本链
         field.Int("supersedes_id").Optional(), // 替代的旧记录ID
@@ -135,7 +135,7 @@ pub const CollectionJob = Schema("collection_jobs", .{
         field.String("source_id"), // 关联 data_sources.source_id
         
         // 任务范围
-        field.String("metric_scope").Optional().Size(500), // 要采集的指标（逗号分隔）
+        field.String("metric_scope").Optional().VarChar(500), // 要采集的指标（逗号分隔）
         field.String("schedule_tier").Default("daily"), // realtime/hourly/daily/weekly/manual
         
         // 调度
@@ -152,11 +152,11 @@ pub const CollectionJob = Schema("collection_jobs", .{
         field.Int("success_count").Default(0), // 成功条数
         field.Int("expected_count").Optional(), // 预期条数
         field.String("error_code").Optional(),
-        field.String("error_message").Optional().Size(2000),
+        field.String("error_message").Optional().VarChar(2000),
         
         // 异常处理
         field.Bool("needs_manual_review").Default(false), // 需要人工复核
-        field.String("review_note").Optional().Size(1000),
+        field.String("review_note").Optional().VarChar(1000),
         
         field.Int("tenant_id").Default(0),
     },
