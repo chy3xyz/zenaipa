@@ -216,6 +216,7 @@ pub fn main(init: std.process.Init) !void {
         
         try blockchain_project.migrations.runMigrations(sqlite_driver);
         try blockchain_project.rating_migrations.runRatingMigrations(sqlite_driver);
+        try blockchain_project.publish_migrations.runPublishMigrations(sqlite_driver);
         
         // WAL已在db.zig初始化时设置，这里再次确认
         _ = try sqlite_driver.exec("PRAGMA journal_mode=WAL;", &.{});
