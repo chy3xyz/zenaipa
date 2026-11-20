@@ -81,7 +81,7 @@ pub fn runRatingMigrations(driver: *zent.sql_sqlite.SQLiteDriver) !void {
         \\  created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
         \\  FOREIGN KEY (rating_id) REFERENCES rating_draft(id),
         \\  FOREIGN KEY (actor_id) REFERENCES user(id),
-        \\  CHECK (action IN ('create', 'submit', 'approve', 'reject'))
+        \\  CHECK (action IN ('create', 'submit', 'approve', 'reject', 'publish', 'revoke'))
         \\);
     ;
     
