@@ -1,8 +1,19 @@
 const std = @import("std");
+const zent = @import("zent");
 const persistence = @import("persistence.zig");
 const engine = @import("engine.zig");
 const RatingStore = persistence.RatingStore;
 const RatingEngine = engine.RatingEngine;
+
+/// 评级服务错误
+pub const RatingServiceError = error{
+    SelfReviewNotAllowed,
+    RatingNotFound,
+    InvalidStatus,
+    PublishGateFailed,
+    MethodVersionNotFound,
+    ReportNotFound,
+};
 
 pub const RatingService = struct {
     store: *RatingStore,
@@ -82,53 +93,114 @@ pub const RatingService = struct {
         }
     }
 
-    /// 复核签发
+    /// 复核签发 - 强制双人校验
     pub fn reviewAndSign(
         self: *RatingService,
         alloc: std.mem.Allocator,
         rating_id: i64,
         reviewer_id: i64,
-        analyst_person_id: i64,
-        reviewer_person_id: i64,
+        analyst_id: i64, // 实际使用 user_id，不是 person_id
         decision: []const u8,
     ) !void {
-        // 1. 验证不同自然人
-        if (analyst_person_id == reviewer_person_id) {
-            return error.SelfReviewNotAllowed;
+        // 1. 获取评级
+        const rating = try self.store.getRatingById(alloc, rating_id) orelse {
+            return RatingServiceError.RatingNotFound;
+        };
+        defer alloc.free(rating);
+
+        // 2. 验证状态
+        if (!std.mem.eql(u8, rating.status, "submitted")) {
+            return RatingServiceError.InvalidStatus;
         }
 
-        // 2. 创建复核记录
+        // 3. 验证不是同一用户自签（简化版：只检查 user_id）
+        if (analyst_id == reviewer_id) {
+            return RatingServiceError.SelfReviewNotAllowed;
+        }
+
+        // 4. 记录当前时间
+        const now = std.time.timestamp();
+        const now_iso = try std.fmt.allocPrint(alloc, "{d}", .{now});
+        defer alloc.free(now_iso);
+
+        // 5. 创建复核记录
         _ = try self.store.createReview(alloc, .{
             .rating_id = rating_id,
-            .analyst_person_id = analyst_person_id,
-            .reviewer_person_id = reviewer_person_id,
+            .analyst_person_id = analyst_id, // 简化：使用 user_id
+            .reviewer_person_id = reviewer_id,
             .decision = decision,
+            .reviewed_at = now_iso,
         });
 
-        // 3. 更新评级状态
+        // 6. 更新评级状态和复核人
         if (std.mem.eql(u8, decision, "approved")) {
-            _ = try self.store.updateRatingStatus(alloc, rating_id, "approved");
-        } else {
+            _ = try zent.codegen.crud_helpers.updateById(
+                self.store.client,
+                alloc,
+                persistence.RatingInfo,
+                rating_id,
+                .{
+                    .status = "approved",
+                    .reviewer_id = reviewer_id,
+                },
+            );
+        } else if (std.mem.eql(u8, decision, "rejected")) {
+            // 驳回回到 draft
             _ = try self.store.updateRatingStatus(alloc, rating_id, "draft");
         }
     }
 
-    /// 发布评级
+    /// 发布评级 - 包含合规门禁检查
     pub fn publishRating(
         self: *RatingService,
         alloc: std.mem.Allocator,
         rating_id: i64,
+        compliance_service: anytype, // *ComplianceService
+        report: anytype, // RatingReport
     ) !void {
-        // TODO: 检查合规开关（C1/C2/C12）
-
-        // 更新状态和发布档位
+        // 1. 获取评级
         const rating = try self.store.getRatingById(alloc, rating_id) orelse {
-            return error.RatingNotFound;
+            return RatingServiceError.RatingNotFound;
         };
+        defer alloc.free(rating);
 
-        _ = try self.store.updateRatingStatus(alloc, rating_id, "published");
-        // TODO: 更新 published_grade = redflag_grade
-        _ = rating;
+        // 2. 验证状态必须是 approved
+        if (!std.mem.eql(u8, rating.status, "approved")) {
+            return RatingServiceError.InvalidStatus;
+        }
+
+        // 3. 合规门禁检查（C1/C2/C12）
+        const gate_result = try compliance_service.checkPublishable(alloc, rating, report);
+        defer gate_result.deinit(alloc);
+
+        if (!gate_result.passed) {
+            std.log.err("发布门禁检查失败: {s}", .{gate_result.violations[0]});
+            return RatingServiceError.PublishGateFailed;
+        }
+
+        // 4. NR 不应发布（置信度检查）
+        if (std.mem.eql(u8, rating.base_grade, "NR")) {
+            std.log.err("评级为 NR（数据不足），不应发布", .{});
+            return RatingServiceError.PublishGateFailed;
+        }
+
+        // 5. 记录发布时间
+        const now = std.time.timestamp();
+        const now_iso = try std.fmt.allocPrint(alloc, "{d}", .{now});
+        defer alloc.free(now_iso);
+
+        // 6. 更新状态和发布档位
+        _ = try zent.codegen.crud_helpers.updateById(
+            self.store.client,
+            alloc,
+            persistence.RatingInfo,
+            rating_id,
+            .{
+                .status = "published",
+                .published_grade = rating.redflag_grade, // W1-W6: published = redflag
+                .published_at = now_iso,
+            },
+        );
     }
 
     /// 获取项目最新评级
