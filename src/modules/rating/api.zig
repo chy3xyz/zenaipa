@@ -13,12 +13,12 @@ pub fn RatingApi(comptime Service: type) type {
             return .{ .service = service };
         }
 
-        pub fn registerRoutes(self: *Self, router: anytype) !void {
-            try router.post("/api/v1/ratings", http.handler(Self, "create", self));
-            try router.post("/api/v1/ratings/:id/submit", http.handler(Self, "submit", self));
-            try router.post("/api/v1/ratings/:id/review", http.handler(Self, "review", self));
-            try router.post("/api/v1/ratings/:id/publish", http.handler(Self, "publish", self));
-            try router.get("/api/v1/projects/:project_id/rating", http.handler(Self, "getProjectRating", self));
+        pub fn registerRoutes(self: *Self, group: anytype) !void {
+            try group.post("ratings", create, @ptrCast(@alignCast(self)));
+            try group.post("ratings/:id/submit", submit, @ptrCast(@alignCast(self)));
+            try group.post("ratings/:id/review", review, @ptrCast(@alignCast(self)));
+            try group.post("ratings/:id/publish", publish, @ptrCast(@alignCast(self)));
+            try group.get("projects/:project_id/rating", getProjectRating, @ptrCast(@alignCast(self)));
         }
 
         pub fn create(self: *Self, ctx: *http.Context) !void {

@@ -134,7 +134,7 @@ pub const RatingService = struct {
 
         // 6. 更新评级状态和复核人
         if (std.mem.eql(u8, decision, "approved")) {
-            _ = try zent.codegen.crud_helpers.updateById(
+            _ = try zent.crud_helpers.updateById(
                 self.store.client,
                 alloc,
                 persistence.RatingInfo,
@@ -188,7 +188,7 @@ pub const RatingService = struct {
         defer alloc.free(now_iso);
 
         // 6. 更新状态和发布档位
-        _ = try zent.codegen.crud_helpers.updateById(
+        _ = try zent.crud_helpers.updateById(
             self.store.client,
             alloc,
             persistence.RatingInfo,

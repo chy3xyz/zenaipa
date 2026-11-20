@@ -24,10 +24,10 @@ pub const FundingRoundInfo = infos[4];
 pub const UnlockEventInfo = infos[5];
 pub const ProjectTagInfo = infos[6];
 
-pub const ProjectRow = zent.codegen.crud_helpers.makeDtoStruct(ProjectInfo, .{});
-pub const ProjectContractRow = zent.codegen.crud_helpers.makeDtoStruct(ProjectContractInfo, .{});
-pub const TokenMetricRow = zent.codegen.crud_helpers.makeDtoStruct(TokenMetricInfo, .{});
-pub const TeamMemberRow = zent.codegen.crud_helpers.makeDtoStruct(TeamMemberInfo, .{});
+pub const ProjectRow = zent.crud_helpers.makeDtoStruct(ProjectInfo, .{});
+pub const ProjectContractRow = zent.crud_helpers.makeDtoStruct(ProjectContractInfo, .{});
+pub const TokenMetricRow = zent.crud_helpers.makeDtoStruct(TokenMetricInfo, .{});
+pub const TeamMemberRow = zent.crud_helpers.makeDtoStruct(TeamMemberInfo, .{});
 
 pub const ProjectListResult = struct {
     items: []const ProjectRow,
@@ -47,7 +47,7 @@ pub const ProjectStore = struct {
         alloc: std.mem.Allocator,
         data: anytype,
     ) !i64 {
-        return try zent.codegen.crud_helpers.create(
+        return try zent.crud_helpers.create(
             self.client,
             alloc,
             ProjectInfo,
@@ -60,7 +60,7 @@ pub const ProjectStore = struct {
         alloc: std.mem.Allocator,
         id: i64,
     ) !?ProjectRow {
-        return try zent.codegen.crud_helpers.getById(
+        return try zent.crud_helpers.getById(
             self.client,
             alloc,
             ProjectInfo,
@@ -132,7 +132,7 @@ pub const ProjectStore = struct {
         id: i64,
         data: anytype,
     ) !bool {
-        return try zent.codegen.crud_helpers.updateById(
+        return try zent.crud_helpers.updateById(
             self.client,
             alloc,
             ProjectInfo,
@@ -146,7 +146,7 @@ pub const ProjectStore = struct {
         alloc: std.mem.Allocator,
         id: i64,
     ) !bool {
-        return try zent.codegen.crud_helpers.deleteById(
+        return try zent.crud_helpers.deleteById(
             self.client,
             alloc,
             ProjectInfo,
@@ -160,7 +160,7 @@ pub const ProjectStore = struct {
         alloc: std.mem.Allocator,
         data: anytype,
     ) !i64 {
-        return try zent.codegen.crud_helpers.create(
+        return try zent.crud_helpers.create(
             self.client,
             alloc,
             ProjectContractInfo,
@@ -188,7 +188,7 @@ pub const ProjectStore = struct {
         alloc: std.mem.Allocator,
         data: anytype,
     ) !i64 {
-        return try zent.codegen.crud_helpers.create(
+        return try zent.crud_helpers.create(
             self.client,
             alloc,
             TokenMetricInfo,
@@ -221,7 +221,7 @@ pub const ProjectStore = struct {
         alloc: std.mem.Allocator,
         data: anytype,
     ) !i64 {
-        return try zent.codegen.crud_helpers.create(
+        return try zent.crud_helpers.create(
             self.client,
             alloc,
             TeamMemberInfo,

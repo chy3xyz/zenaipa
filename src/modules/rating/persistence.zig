@@ -21,9 +21,9 @@ pub const DimensionEvidenceInfo = infos[3];
 pub const RatingReviewInfo = infos[4];
 pub const RatingChangeInfo = infos[5];
 
-pub const MethodVersionRow = zent.codegen.crud_helpers.makeDtoStruct(MethodVersionInfo, .{});
-pub const RatingRow = zent.codegen.crud_helpers.makeDtoStruct(RatingInfo, .{});
-pub const RatingReviewRow = zent.codegen.crud_helpers.makeDtoStruct(RatingReviewInfo, .{});
+pub const MethodVersionRow = zent.crud_helpers.makeDtoStruct(MethodVersionInfo, .{});
+pub const RatingRow = zent.crud_helpers.makeDtoStruct(RatingInfo, .{});
+pub const RatingReviewRow = zent.crud_helpers.makeDtoStruct(RatingReviewInfo, .{});
 
 pub const RatingStore = struct {
     client: *Client,
@@ -37,7 +37,7 @@ pub const RatingStore = struct {
         alloc: std.mem.Allocator,
         data: anytype,
     ) !i64 {
-        return try zent.codegen.crud_helpers.create(
+        return try zent.crud_helpers.create(
             self.client,
             alloc,
             RatingInfo,
@@ -50,7 +50,7 @@ pub const RatingStore = struct {
         alloc: std.mem.Allocator,
         id: i64,
     ) !?RatingRow {
-        return try zent.codegen.crud_helpers.getById(
+        return try zent.crud_helpers.getById(
             self.client,
             alloc,
             RatingInfo,
@@ -87,7 +87,7 @@ pub const RatingStore = struct {
         id: i64,
         status: []const u8,
     ) !bool {
-        return try zent.codegen.crud_helpers.updateById(
+        return try zent.crud_helpers.updateById(
             self.client,
             alloc,
             RatingInfo,
@@ -101,7 +101,7 @@ pub const RatingStore = struct {
         alloc: std.mem.Allocator,
         data: anytype,
     ) !i64 {
-        return try zent.codegen.crud_helpers.create(
+        return try zent.crud_helpers.create(
             self.client,
             alloc,
             RatingReviewInfo,

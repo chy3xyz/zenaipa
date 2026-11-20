@@ -17,7 +17,7 @@ pub const ComplianceDecisionInfo = infos[1];
 pub const CorrectionCaseInfo = infos[2];
 pub const ConflictDisclosureInfo = infos[3];
 
-pub const ComplianceConfigRow = zent.codegen.crud_helpers.makeDtoStruct(ComplianceConfigInfo, .{});
+pub const ComplianceConfigRow = zent.crud_helpers.makeDtoStruct(ComplianceConfigInfo, .{});
 
 pub const ComplianceStore = struct {
     client: *Client,

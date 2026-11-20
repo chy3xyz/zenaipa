@@ -12,13 +12,12 @@ pub fn ComplianceApi(comptime Service: type) type {
             return .{ .service = service };
         }
 
-        pub fn registerRoutes(self: *Self, router: anytype) !void {
-            try router.get("/api/v1/compliance/config", http.handler(Self, "getConfig", self));
-            try router.post("/api/v1/compliance/check", http.handler(Self, "checkPublishable", self));
+        pub fn registerRoutes(self: *Self, group: anytype) !void {
+            try group.get("compliance/config", getConfig, @ptrCast(@alignCast(self)));
+            try group.post("compliance/check", checkPublishable, @ptrCast(@alignCast(self)));
         }
 
-        pub fn getConfig(self: *Self, ctx: *http.Context) !void {
-            _ = self;
+        pub fn getConfig(_: *Self, ctx: *http.Context) !void {
             try ctx.json(.{
                 .code = 0,
                 .msg = "success",
@@ -37,9 +36,7 @@ pub fn ComplianceApi(comptime Service: type) type {
             });
         }
 
-        pub fn checkPublishable(self: *Self, ctx: *http.Context) !void {
-            _ = self;
-            _ = ctx;
+        pub fn checkPublishable(_: *Self, ctx: *http.Context) !void {
             try ctx.json(.{
                 .code = 0,
                 .msg = "success",

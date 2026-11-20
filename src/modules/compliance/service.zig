@@ -46,7 +46,7 @@ pub const ComplianceService = struct {
             const existing = try self.store.getConfig(alloc, sw.id);
             if (existing == null) {
                 // 创建默认配置
-                _ = try zent.codegen.crud_helpers.create(
+                _ = try zent.crud_helpers.create(
                     self.store.client,
                     alloc,
                     persistence.ComplianceConfigInfo,

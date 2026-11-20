@@ -12,17 +12,18 @@ pub fn BlockchainProjectApi(comptime Service: type) type {
             return .{ .service = service };
         }
 
-        pub fn registerRoutes(self: *Self, router: anytype) !void {
-            try router.get("/api/v1/blockchain/projects", http.handler(Self, "list", self));
-            try router.get("/api/v1/blockchain/projects/:id", http.handler(Self, "get", self));
-            try router.post("/api/v1/blockchain/projects", http.handler(Self, "create", self));
-            try router.put("/api/v1/blockchain/projects/:id", http.handler(Self, "update", self));
-            try router.delete("/api/v1/blockchain/projects/:id", http.handler(Self, "delete", self));
-            try router.post("/api/v1/blockchain/projects/import/csv", http.handler(Self, "importCsv", self));
+        pub fn registerRoutes(self: *Self, group: anytype) !void {
+            try group.get("blockchain/projects", list, @ptrCast(@alignCast(self)));
+            try group.get("blockchain/projects/:id", get, @ptrCast(@alignCast(self)));
+            try group.post("blockchain/projects", create, @ptrCast(@alignCast(self)));
+            try group.put("blockchain/projects/:id", update, @ptrCast(@alignCast(self)));
+            try group.delete("blockchain/projects/:id", delete, @ptrCast(@alignCast(self)));
+            try group.post("blockchain/projects/import/csv", importCsv, @ptrCast(@alignCast(self)));
         }
 
-        pub fn list(self: *Self, ctx: *http.Context) !void {
-            const alloc = ctx.arena();
+        fn list(ctx: *http.Context) !void {
+            const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
+            const alloc = ctx.allocator;
 
             const limit = ctx.queryInt("limit", 20) catch 20;
             const offset = ctx.queryInt("offset", 0) catch 0;
@@ -48,8 +49,9 @@ pub fn BlockchainProjectApi(comptime Service: type) type {
             });
         }
 
-        pub fn get(self: *Self, ctx: *http.Context) !void {
-            const alloc = ctx.arena();
+        fn get(ctx: *http.Context) !void {
+            const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
+            const alloc = ctx.allocator;
             const id_str = ctx.param("id") orelse return error.MissingId;
             const id = try std.fmt.parseInt(i64, id_str, 10);
 
