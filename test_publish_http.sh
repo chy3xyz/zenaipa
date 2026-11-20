@@ -51,8 +51,15 @@ echo "  Project: $PROJ_ID, Rating: $RATING_ID"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/internal/projects/$PROJ_ID/ratings/$RATING_ID/publish" -H "Authorization: Bearer $TOKEN_A")
 assert_http "T1: Cannot publish draft" "409" "$CODE"
 
-# T2: Submit (with placeholder report fields)
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/projects/$PROJ_ID/ratings/$RATING_ID/submit" -H "Authorization: Bearer $TOKEN_A")
+# T2: Submit with real report fields
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API/projects/$PROJ_ID/ratings/$RATING_ID/submit" \
+  -H "Authorization: Bearer $TOKEN_A" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "report_facts":"{\"summary\":\"Bitcoin is a decentralized cryptocurrency\",\"launch\":\"2009\"}",
+    "report_disclaimer":"DISCLAIMER: This report is for informational purposes only and does not constitute investment advice.",
+    "report_conflict":"No conflicts of interest to disclose."
+  }')
 assert_http "T2: Submit succeeds" "200" "$CODE"
 
 # T3: Approve

@@ -6,21 +6,26 @@ const publish_repository = @import("publish_repository.zig");
 pub const PublishAPI = struct {
     sqlite_driver: *zent.sql_sqlite.SQLiteDriver,
     allocator: std.mem.Allocator,
+    sec: *@import("zmodu").security.AppSecurity,
 
-    pub fn init(sqlite_driver: *zent.sql_sqlite.SQLiteDriver, allocator: std.mem.Allocator) PublishAPI {
+    pub fn init(sqlite_driver: *zent.sql_sqlite.SQLiteDriver, allocator: std.mem.Allocator, sec: *@import("zmodu").security.AppSecurity) PublishAPI {
         return .{
             .sqlite_driver = sqlite_driver,
             .allocator = allocator,
+            .sec = sec,
         };
     }
 
     pub fn registerRoutes(self: *PublishAPI, router: anytype) !void {
-        // Internal authenticated endpoints
-        var internal_group = router.scope("/api/v1/internal");
-        try internal_group.post("projects/{id}/ratings/{rating_id}/publish", handlePublish, @ptrCast(@alignCast(self)));
-        try internal_group.post("projects/{id}/ratings/{rating_id}/revoke", handleRevoke, @ptrCast(@alignCast(self)));
+        const zmodu = @import("zmodu");
         
-        // Public anonymous endpoints
+        // Internal authenticated endpoints (with JWT)
+        var internal_group = router.scope("/api/v1/internal");
+        var internal_auth = try internal_group.use(zmodu.http.http_middleware.jwtAuthWithSecurity(&self.sec.module));
+        try internal_auth.post("projects/{id}/ratings/{rating_id}/publish", handlePublish, @ptrCast(@alignCast(self)));
+        try internal_auth.post("projects/{id}/ratings/{rating_id}/revoke", handleRevoke, @ptrCast(@alignCast(self)));
+        
+        // Public anonymous endpoints (no auth)
         var public_group = router.scope("/api/v1/public");
         try public_group.get("ratings", handleListPublic, @ptrCast(@alignCast(self)));
         try public_group.get("projects/{id}/rating", handleGetPublic, @ptrCast(@alignCast(self)));

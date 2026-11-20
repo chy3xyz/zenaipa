@@ -332,16 +332,62 @@ fn handleSubmit(ctx: *http.Context) !void {
         return;
     };
     
+    // Parse request body for report fields
+    const body = ctx.body orelse {
+        try ctx.json(400, "{\"error\":\"Missing request body\"}");
+        return;
+    };
+    const obj = std.json.parseFromSlice(std.json.Value, self.allocator, body, .{}) catch {
+        try ctx.json(400, "{\"error\":\"Invalid JSON\"}");
+        return;
+    };
+    defer obj.deinit();
+    
+    const root = obj.value.object;
+    
+    // Extract report fields (required)
+    const facts_json = if (root.get("report_facts")) |f| blk: {
+        if (f != .string) {
+            try ctx.json(400, "{\"error\":\"report_facts must be JSON string\"}");
+            return;
+        }
+        break :blk f.string;
+    } else {
+        try ctx.json(400, "{\"error\":\"Missing report_facts\"}");
+        return;
+    };
+    
+    const disclaimer = if (root.get("report_disclaimer")) |d| blk: {
+        if (d != .string) {
+            try ctx.json(400, "{\"error\":\"report_disclaimer must be string\"}");
+            return;
+        }
+        break :blk d.string;
+    } else {
+        try ctx.json(400, "{\"error\":\"Missing report_disclaimer\"}");
+        return;
+    };
+    
+    const conflict = if (root.get("report_conflict")) |c| blk: {
+        if (c != .string) {
+            try ctx.json(400, "{\"error\":\"report_conflict must be string\"}");
+            return;
+        }
+        break :blk c.string;
+    } else {
+        try ctx.json(400, "{\"error\":\"Missing report_conflict\"}");
+        return;
+    };
+    
     var rating_repo = rating_repository.RatingRepository.init(self.sqlite_driver, self.allocator);
     
-    // Submit with atomic CAS transaction (includes audit)
-    // TODO: Accept report fields from request body
+    // Submit with atomic CAS transaction (freezes hash)
     const submit_input = rating_repository.RatingRepository.SubmitInput{
         .rating_id = rating_id,
         .analyst_id = user_id,
-        .report_facts_json = "{\"summary\":\"Placeholder facts\"}",
-        .report_disclaimer = "DISCLAIMER: This is a placeholder disclaimer.",
-        .report_conflict = "No conflicts disclosed.",
+        .report_facts_json = facts_json,
+        .report_disclaimer = disclaimer,
+        .report_conflict = conflict,
     };
     
     const success = rating_repo.submit(submit_input) catch |err| {
