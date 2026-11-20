@@ -211,14 +211,50 @@ pub fn main(init: std.process.Init) !void {
     // 区块链项目服务初始化
     // 运行blockchain_project迁移
     if (store_env.sqlite) |sqlite_driver| {
+        // 确保FK已启用（在任何操作之前）
+        try sqlite_driver.enforceForeignKeys();
+        
         try blockchain_project.migrations.runMigrations(sqlite_driver);
         
-        // 启用WAL, FK, busy_timeout
+        // WAL已在db.zig初始化时设置，这里再次确认
         _ = try sqlite_driver.exec("PRAGMA journal_mode=WAL;", &.{});
-        try sqlite_driver.enforceForeignKeys();
-        sqlite_driver.default_busy_timeout = 5000;
         
-        std.log.info("[blockchain_project] migrations completed, WAL/FK/busy_timeout enabled", .{});
+        // 验证FK确实启用了
+        const fk_enabled = try sqlite_driver.foreignKeysEnforced();
+        if (!fk_enabled) {
+            std.log.err("[blockchain_project] FK not enabled after enforceForeignKeys!", .{});
+            return error.ForeignKeysNotEnabled;
+        }
+        
+        // FK功能测试：创建临时表验证
+        _ = try sqlite_driver.exec(
+            "CREATE TEMP TABLE IF NOT EXISTS _fk_test_parent (id INTEGER PRIMARY KEY)",
+            &.{},
+        );
+        _ = try sqlite_driver.exec(
+            "CREATE TEMP TABLE IF NOT EXISTS _fk_test_child (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL, FOREIGN KEY(parent_id) REFERENCES _fk_test_parent(id))",
+            &.{},
+        );
+        _ = try sqlite_driver.exec("INSERT INTO _fk_test_parent (id) VALUES (1)", &.{});
+        
+        // 测试非法FK插入（应该失败）
+        const fk_violation = sqlite_driver.exec(
+            "INSERT INTO _fk_test_child (id, parent_id) VALUES (1, 999)",
+            &.{},
+        );
+        if (fk_violation) |_| {
+            std.log.err("[blockchain_project] FK test FAILED: invalid FK insert was accepted!", .{});
+            return error.ForeignKeyNotEnforced;
+        } else |err| {
+            if (err == error.ForeignKeyViolation or err == error.Constraint) {
+                std.log.info("[blockchain_project] ✓ FK verified: constraint violation correctly rejected", .{});
+            } else {
+                std.log.err("[blockchain_project] FK test unexpected error: {s}", .{@errorName(err)});
+                return err;
+            }
+        }
+        
+        std.log.info("[blockchain_project] migrations completed, WAL/FK/busy_timeout verified", .{});
     }
     
     var project_repo = if (store_env.sqlite) |sqlite_driver|

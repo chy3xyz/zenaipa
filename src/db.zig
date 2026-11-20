@@ -38,7 +38,10 @@ pub fn StoreEnv(comptime ClientInfos: anytype, comptime MigrateGroups: anytype) 
                 .sqlite => {
                     const driver = try allocator.create(zent.sql_sqlite.SQLiteDriver);
                     errdefer allocator.destroy(driver);
-                    driver.* = try zent.sql_sqlite.SQLiteDriver.open(allocator, dsn);
+                    driver.* = try zent.sql_sqlite.SQLiteDriver.openWithOptions(allocator, dsn, .{
+                        .enforce_foreign_keys = true,
+                        .strict_numeric_text = false,
+                    });
                     errdefer driver.close();
                     inline for (MigrateGroups) |gi| {
                         try zent.sql_schema.migrateSchema(allocator, driver.asDriver(), gi);

@@ -1,6 +1,7 @@
 const std = @import("std");
 const zmodu = @import("zmodu");
 const http = zmodu.http;
+const mw = @import("../../middleware/auth.zig");
 
 pub fn ProjectApi(comptime Service: type) type {
     return struct {
@@ -14,9 +15,9 @@ pub fn ProjectApi(comptime Service: type) type {
 
         pub fn registerRoutes(self: *Self, group: anytype) !void {
             try group.get("projects", listProjects, @ptrCast(@alignCast(self)));
-            try group.get("projects/:id", getProject, @ptrCast(@alignCast(self)));
+            try group.get("projects/{id}", getProject, @ptrCast(@alignCast(self)));
             try group.post("projects", createProject, @ptrCast(@alignCast(self)));
-            try group.put("projects/:id", updateProject, @ptrCast(@alignCast(self)));
+            try group.put("projects/{id}", updateProject, @ptrCast(@alignCast(self)));
         }
 
         fn listProjects(ctx: *http.Context) !void {
@@ -59,17 +60,10 @@ pub fn ProjectApi(comptime Service: type) type {
         }
 
         fn getProject(ctx: *http.Context) !void {
-            std.log.info("[API.getProject] Handler called", .{});
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
             
-            std.log.info("[API.getProject] Getting path param", .{});
-            const id_str = ctx.pathParam("id") orelse {
-                std.log.info("[API.getProject] pathParam returned null", .{});
-                try ctx.sendErrorResponse(400, 400, "缺少id参数");
-                return;
-            };
-            const id = std.fmt.parseInt(i64, id_str, 10) catch {
-                try ctx.sendErrorResponse(400, 400, "无效的id格式");
+            const id = ctx.paramInt(i64, "id") catch {
+                try ctx.sendErrorResponse(400, 400, "无效的id参数");
                 return;
             };
             
@@ -96,6 +90,12 @@ pub fn ProjectApi(comptime Service: type) type {
 
         fn createProject(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
+            
+            // 需要登录
+            _ = mw.authUserId(ctx) orelse {
+                try ctx.sendErrorResponse(401, 401, "未登录");
+                return;
+            };
             
             const req = ctx.bindJsonLoose(struct {
                 name: []const u8,
@@ -134,12 +134,14 @@ pub fn ProjectApi(comptime Service: type) type {
         fn updateProject(ctx: *http.Context) !void {
             const self: *Self = @ptrCast(@alignCast(ctx.user_data orelse return error.UnexpectedError));
             
-            const id_str = ctx.pathParam("id") orelse {
-                try ctx.sendErrorResponse(400, 400, "缺少id参数");
+            // 需要登录
+            _ = mw.authUserId(ctx) orelse {
+                try ctx.sendErrorResponse(401, 401, "未登录");
                 return;
             };
-            const id = std.fmt.parseInt(i64, id_str, 10) catch {
-                try ctx.sendErrorResponse(400, 400, "无效的id格式");
+            
+            const id = ctx.paramInt(i64, "id") catch {
+                try ctx.sendErrorResponse(400, 400, "无效的id参数");
                 return;
             };
             

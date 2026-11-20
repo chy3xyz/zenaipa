@@ -149,29 +149,12 @@ pub const ProjectRepository = struct {
     }
     
     pub fn update(self: *ProjectRepository, id: i64, name: ?[]const u8, slug: ?[]const u8, sector: ?[]const u8, status: ?[]const u8, description: ?[]const u8, official_url: ?[]const u8) !void {
-        // 动态构建UPDATE语句
-        var sql: []const u8 = undefined;
-        
-        var args: std.ArrayList(zent.sql.Value) = .empty;
-        defer args.deinit(self.allocator);
-        
-        if (name) |n| {
-            try args.append(self.allocator, .{ .string = n });
-        }
-        if (slug) |s| {
-            try args.append(self.allocator, .{ .string = s });
-        }
-        if (sector) |sec| {
-            try args.append(self.allocator, .{ .string = sec });
-        }
-        if (status) |st| {
-            try args.append(self.allocator, .{ .string = st });
-        }
-        if (description) |d| {
-            try args.append(self.allocator, .{ .string = d });
-        }
-        if (official_url) |u| {
-            try args.append(self.allocator, .{ .string = u });
+        // 检查项目是否存在
+        const exists_sql = "SELECT 1 FROM project WHERE id = ?1";
+        var check_rows = try self.driver.query(exists_sql, &.{.{ .int = id }});
+        defer check_rows.deinit();
+        if (check_rows.next() == null) {
+            return error.NotFound;
         }
         
         // 如果没有任何更新字段，直接返回
@@ -179,17 +162,72 @@ pub const ProjectRepository = struct {
             return;
         }
         
+        // 构建动态UPDATE
+        var sql_parts = std.ArrayList(u8).empty;
+        defer sql_parts.deinit(self.allocator);
+        
+        try sql_parts.appendSlice(self.allocator, "UPDATE project SET updated_at = strftime('%s', 'now')");
+        
+        var args = std.ArrayList(zent.sql.Value).empty;
+        defer args.deinit(self.allocator);
+        
+        var param_idx: i32 = 1;
+        
+        if (name) |n| {
+            const part = std.fmt.allocPrint(self.allocator, ", name = ?{d}", .{param_idx}) catch unreachable;
+            defer self.allocator.free(part);
+            try sql_parts.appendSlice(self.allocator, part);
+            try args.append(self.allocator, .{ .string = n });
+            param_idx += 1;
+        }
+        if (slug) |s| {
+            const part = std.fmt.allocPrint(self.allocator, ", slug = ?{d}", .{param_idx}) catch unreachable;
+            defer self.allocator.free(part);
+            try sql_parts.appendSlice(self.allocator, part);
+            try args.append(self.allocator, .{ .string = s });
+            param_idx += 1;
+        }
+        if (sector) |sec| {
+            const part = std.fmt.allocPrint(self.allocator, ", sector = ?{d}", .{param_idx}) catch unreachable;
+            defer self.allocator.free(part);
+            try sql_parts.appendSlice(self.allocator, part);
+            try args.append(self.allocator, .{ .string = sec });
+            param_idx += 1;
+        }
+        if (status) |st| {
+            const part = std.fmt.allocPrint(self.allocator, ", status = ?{d}", .{param_idx}) catch unreachable;
+            defer self.allocator.free(part);
+            try sql_parts.appendSlice(self.allocator, part);
+            try args.append(self.allocator, .{ .string = st });
+            param_idx += 1;
+        }
+        if (description) |d| {
+            const part = std.fmt.allocPrint(self.allocator, ", description = ?{d}", .{param_idx}) catch unreachable;
+            defer self.allocator.free(part);
+            try sql_parts.appendSlice(self.allocator, part);
+            try args.append(self.allocator, .{ .string = d });
+            param_idx += 1;
+        }
+        if (official_url) |u| {
+            const part = std.fmt.allocPrint(self.allocator, ", official_url = ?{d}", .{param_idx}) catch unreachable;
+            defer self.allocator.free(part);
+            try sql_parts.appendSlice(self.allocator, part);
+            try args.append(self.allocator, .{ .string = u });
+            param_idx += 1;
+        }
+        
+        const where_part = std.fmt.allocPrint(self.allocator, " WHERE id = ?{d}", .{param_idx}) catch unreachable;
+        defer self.allocator.free(where_part);
+        try sql_parts.appendSlice(self.allocator, where_part);
         try args.append(self.allocator, .{ .int = id });
         
-        // 简单SQL - 只更新一个字段作为演示
-        if (name) |n| {
-            _ = n;
-            sql = "UPDATE project SET name = ?1 WHERE id = ?2";
-        } else if (status) |_| {
-            sql = "UPDATE project SET status = ?1 WHERE id = ?2";
-        } else {
-            sql = "UPDATE project SET updated_at = strftime('%s', 'now') WHERE id = ?1";
-        }
-        _ = try self.driver.exec(sql, args.items);
+        const sql = sql_parts.items;
+        _ = self.driver.exec(sql, args.items) catch |err| {
+            // SQLite UNIQUE constraint violation
+            if (err == error.Constraint) {
+                return error.DuplicateSlug;
+            }
+            return err;
+        };
     }
 };
