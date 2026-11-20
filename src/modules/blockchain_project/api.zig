@@ -3,11 +3,20 @@ const zmodu = @import("zmodu");
 const http = zmodu.http;
 const mw = @import("../../middleware/auth.zig");
 
-// 权限检查辅助函数
+// 权限检查辅助函数：检查roles CSV中是否包含"admin"
 fn checkAdminPermission(ctx: *http.Context, user_id: i64) bool {
     _ = user_id;
-    const admin_str = ctx.getAttr("admin") orelse return false;
-    return std.mem.eql(u8, admin_str, "true");
+    const roles_csv = ctx.getAttr("roles") orelse return false;
+    
+    // roles是CSV字符串，例如 "user" 或 "user,admin" 或 "admin"
+    var iter = std.mem.splitScalar(u8, roles_csv, ',');
+    while (iter.next()) |role| {
+        const trimmed = std.mem.trim(u8, role, " \t");
+        if (std.mem.eql(u8, trimmed, "admin")) {
+            return true;
+        }
+    }
+    return false;
 }
 
 pub fn ProjectApi(comptime Service: type) type {

@@ -245,6 +245,10 @@ fn handleGetDraft(self: *RatingAPI, ctx: *http.Context) !void {
     }
 
     // 读路径参数
+    const project_id = ctx.paramInt(i64, "id") catch {
+        try ctx.json(400, "{\"error\":\"Invalid project ID\"}");
+        return;
+    };
     const rating_id = ctx.paramInt(i64, "rating_id") catch {
         try ctx.json(400, "{\"error\":\"Invalid rating ID\"}");
         return;
@@ -255,6 +259,12 @@ fn handleGetDraft(self: *RatingAPI, ctx: *http.Context) !void {
     const rating_opt = try rating_repo.getById(rating_id);
     
     if (rating_opt) |rating| {
+        // 验证rating属于指定的project
+        if (rating.project_id != project_id) {
+            try ctx.json(404, "{\"error\":\"Rating not found for this project\"}");
+            return;
+        }
+        
         const response_json = try std.fmt.allocPrint(self.allocator,
             \\{{"id":{d},"project_id":{d},"model_version":"{s}","input_json":{s},"c1_tech":{?d},"c2_team":{?d},"c3_token":{?d},"c4_product":{?d},"c5_community":{?d},"c6_governance":{?d},"confidence":{d},"red_flags":{s},"base_grade":"{s}","redflag_grade":"{s}","shadow_grade":"{s}","published_grade":"{s}","created_by":{d},"is_draft":true,"created_at":{d}}}
         , .{
@@ -287,6 +297,15 @@ fn handleGetDraft(self: *RatingAPI, ctx: *http.Context) !void {
 
 fn checkAdminPermission(ctx: *http.Context, user_id: i64) bool {
     _ = user_id;
-    const admin_str = ctx.getAttr("admin") orelse return false;
-    return std.mem.eql(u8, admin_str, "true");
+    const roles_csv = ctx.getAttr("roles") orelse return false;
+    
+    // roles是CSV字符串，例如 "user" 或 "user,admin" 或 "admin"
+    var iter = std.mem.splitScalar(u8, roles_csv, ',');
+    while (iter.next()) |role| {
+        const trimmed = std.mem.trim(u8, role, " \t");
+        if (std.mem.eql(u8, trimmed, "admin")) {
+            return true;
+        }
+    }
+    return false;
 }
