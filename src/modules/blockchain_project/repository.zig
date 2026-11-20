@@ -72,10 +72,7 @@ pub const ProjectRepository = struct {
     }
     
     pub fn getById(self: *ProjectRepository, id: i64) !?ProjectRow {
-        const sql =
-            \\SELECT id, name, slug, sector, status, description, official_url
-            \\FROM project WHERE id = ?1
-        ;
+        const sql = "SELECT id, name, slug, sector, status, description, official_url FROM project WHERE id = ?1";
         
         var rows = try self.driver.query(sql, &.{.{ .int = id }});
         defer rows.deinit();
